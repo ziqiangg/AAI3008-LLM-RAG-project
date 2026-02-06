@@ -8,6 +8,7 @@ This project builds a Retrieval-Augmented Generation (RAG) learning assistant th
 
 **Backend Framework:**
 - Flask 3.0.3 - Web framework
+- Flask-CORS 4.0.0 - Cross-Origin Resource Sharing
 
 **AI/ML Stack:**
 - Google Gemini 1.5 API - Large Language Model
@@ -29,6 +30,161 @@ This project builds a Retrieval-Augmented Generation (RAG) learning assistant th
 **Utilities:**
 - python-dotenv 1.0.1 - Environment variable management
 - boto3 1.34.124 - AWS SDK (for S3 integration)
+
+### Project Structure
+
+```
+AAI3008-LLM-RAG-project/
+├── app/
+│   ├── backend/
+│   │   ├── routes/          # API endpoints
+│   │   ├── services/        # Business logic
+│   │   ├── utils/           # Helper functions
+│   │   ├── models.py        # Database models
+│   │   ├── config.py        # Configuration settings
+│   │   ├── database.py      # Database connection
+│   │   └── app.py           # Flask application factory
+│   └── frontend/            # Frontend files (to be implemented)
+├── schema_dump/             # Database schema SQL
+├── docker-compose.yml       # Docker orchestration
+├── Dockerfile               # Docker image definition
+├── requirements.txt         # Python dependencies
+└── .env.example             # Environment variables template
+```
+
+## Setup Options
+
+You can set up this project using either **Docker** (recommended) or a **traditional Python virtual environment**.
+
+---
+
+## Option 1: Docker Setup (Recommended)
+
+Docker simplifies the setup by automatically handling PostgreSQL, pgvector, and all dependencies.
+
+### Prerequisites
+
+- **Docker** and **Docker Compose** installed ([Install Docker](https://docs.docker.com/get-docker/))
+- **Git**
+- **Google Gemini API Key** (obtain from [Google AI Studio](https://aistudio.google.com/))
+
+### Setup Instructions
+
+#### 1. Clone the Repository
+
+```bash
+git clone https://github.com/ziqiangg/AAI3008-LLM-RAG-project.git
+cd AAI3008-LLM-RAG-project
+```
+
+#### 2. Configure Environment Variables
+
+Create a `.env` file in the project root (use `.env.example` as template):
+
+```bash
+# Copy the example file
+cp .env.example .env
+```
+
+Edit `.env` and add your API keys:
+
+```env
+# Gemini API (REQUIRED)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Database Configuration (defaults are fine for Docker)
+DB_NAME=llm_rag_db
+DB_USER=postgres
+DB_PASSWORD=your_secure_password_here
+
+# Flask Configuration
+FLASK_ENV=development
+SECRET_KEY=your_secret_key_here
+```
+
+#### 3. Start the Application
+
+```bash
+docker-compose up --build
+```
+
+This command will:
+- Build the Flask application Docker image
+- Pull the PostgreSQL with pgvector image
+- Start both containers
+- Automatically initialize the database schema
+- Start the Flask development server
+
+#### 4. Access the Application
+
+- **API**: [http://localhost:5000](http://localhost:5000)
+- **Health Check**: [http://localhost:5000/health](http://localhost:5000/health)
+
+#### 5. Stop the Application
+
+```bash
+# Stop containers (keeps data)
+docker-compose down
+
+# Stop containers and remove volumes (deletes database data)
+docker-compose down -v
+```
+
+### Useful Docker Commands
+
+```bash
+# View running containers
+docker-compose ps
+
+# View logs
+docker-compose logs -f
+
+# View backend logs only
+docker-compose logs -f backend
+
+# View database logs only
+docker-compose logs -f db
+
+# Restart services
+docker-compose restart
+
+# Rebuild and restart
+docker-compose up --build
+
+# Execute commands in backend container
+docker-compose exec backend bash
+
+# Execute commands in database container
+docker-compose exec db psql -U postgres -d llm_rag_db
+
+# Stop all services
+docker-compose down
+
+# Stop all services and remove volumes (delete data)
+docker-compose down -v
+```
+
+### Database Management with Docker
+
+```bash
+# Access PostgreSQL shell
+docker-compose exec db psql -U postgres -d llm_rag_db
+
+# Run SQL commands
+docker-compose exec db psql -U postgres -d llm_rag_db -c "SELECT * FROM users;"
+
+# Backup database
+docker-compose exec db pg_dump -U postgres llm_rag_db > backup.sql
+
+# Restore database
+docker-compose exec -T db psql -U postgres llm_rag_db < backup.sql
+```
+
+---
+
+## Option 2: Traditional Setup (Without Docker)
+
+Use this option if you prefer managing dependencies manually or cannot use Docker.
 
 ### Prerequisites
 
@@ -71,14 +227,14 @@ pip install -r requirements.txt
 
 1. Install PostgreSQL 18 and pgvector extension following [postgre_vector_db_installation_guide.md](postgre_vector_db_installation_guide.md)
 
-2. Create a new database for the project if you have not:
+2. Create a new database for the project:
    ```sql
-   CREATE DATABASE postgres;
+   CREATE DATABASE llm_rag_db;
    ```
 
 3. Connect to the database and initialize the schema using the provided SQL dump:
    ```sql
-   \c postgres
+   \c llm_rag_db
    \i schema_dump/schema.sql
    ```
    
@@ -95,12 +251,12 @@ GEMINI_API_KEY=your_gemini_api_key_here
 # Database Configuration
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=postgres
+DB_NAME=llm_rag_db
 DB_USER=postgres
 DB_PASSWORD=your_postgres_password
 
 # Flask Configuration
-FLASK_APP=app.py
+FLASK_APP=app.backend.app:app
 FLASK_ENV=development
 SECRET_KEY=your_secret_key_here
 
@@ -118,6 +274,28 @@ flask run
 ```
 
 The application should now be running at `http://localhost:5000`
+
+---
+
+## API Endpoints
+
+The Flask backend provides the following REST API endpoints:
+
+- `GET /health` - Health check and database connection status
+- `GET /api/users` - Get all users
+- `POST /api/users` - Create a new user
+- `GET /api/users/<id>` - Get user by ID
+- `DELETE /api/users/<id>` - Delete user
+- `GET /api/documents` - Get all documents
+- `POST /api/documents` - Upload a new document
+- `GET /api/documents/<id>` - Get document by ID
+- `DELETE /api/documents/<id>` - Delete document
+- `GET /api/sessions` - Get all sessions
+- `POST /api/sessions` - Create a new session
+- `GET /api/sessions/<id>` - Get session by ID
+- `PUT /api/sessions/<id>` - Update session
+- `DELETE /api/sessions/<id>` - Delete session
+- `POST /api/query` - Ask a question (RAG pipeline - to be implemented)
 
 ### Database Schema Reference
 

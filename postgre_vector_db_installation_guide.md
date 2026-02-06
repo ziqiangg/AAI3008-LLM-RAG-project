@@ -1,6 +1,24 @@
-# PostgreSQL + pgvector Installation Guide (Development - Windows)
+# PostgreSQL + pgvector Installation Guide
 
-This guide covers the installation of PostgreSQL 18 and the pgvector extension for local development on Windows.
+This guide covers the installation of PostgreSQL 18 and the pgvector extension for development.
+
+## Setup Options
+
+### Option 1: Docker Setup (Recommended) 
+
+**If you're using Docker (recommended), you don't need to follow this guide!**
+
+Docker automatically handles PostgreSQL and pgvector installation. Simply follow the Docker setup instructions in [README.md](README.md#option-1-docker-setup-recommended).
+
+The `docker-compose.yml` file uses the `ankane/pgvector` image which comes with PostgreSQL and pgvector pre-installed.
+
+---
+
+### Option 2: Manual Installation (Windows)
+
+**Only follow this section if you are NOT using Docker and prefer a traditional Python virtual environment setup.**
+
+This guide covers manual installation for local development on Windows.
 
 ## Prerequisites
 

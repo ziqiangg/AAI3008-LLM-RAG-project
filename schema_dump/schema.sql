@@ -42,7 +42,7 @@ CREATE TABLE document_chunks (
     chunk_order INTEGER NOT NULL,
     content TEXT NOT NULL,
     embedding VECTOR(384), -- Dimension 384 for All-MiniLM-L6-v2
-    metadata JSONB -- For storing page numbers, headings, etc.
+    chunk_metadata JSONB -- For storing page numbers, headings, etc.
 );
 
 -- Function: update_updated_at_column
