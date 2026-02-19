@@ -28,7 +28,7 @@ def health_check():
         }), 503
 
 
-@health_bp.route('/', methods=['GET'])
+@health_bp.route('/api', methods=['GET'])
 def index():
     """Root endpoint"""
     return jsonify({

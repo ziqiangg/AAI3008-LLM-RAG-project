@@ -1,101 +1,721 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM RAG Learning Assistant</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-        }
-        .info {
-            background: #e3f2fd;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-        }
-        .endpoint {
-            background: #f5f5f5;
-            padding: 10px;
-            margin: 10px 0;
-            border-left: 4px solid #2196F3;
-        }
-        .status {
-            color: green;
-            font-weight: bold;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM RAG Learning Assistant</title>
+  <style>
+    /* ── Reset & Base ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-main:      #212121;
+      --bg-sidebar:   #171717;
+      --bg-input:     #2f2f2f;
+      --bg-message:   #2f2f2f;
+      --accent:       #10a37f;
+      --accent-hover: #0d8a6c;
+      --text-primary: #ececec;
+      --text-muted:   #8e8ea0;
+      --border:       #3a3a3a;
+      --danger:       #e53e3e;
+      --sidebar-w:    260px;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-primary);
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ────────────────────────────────────────────────── */
+    #sidebar {
+      width: var(--sidebar-w);
+      background: var(--bg-sidebar);
+      display: flex;
+      flex-direction: column;
+      padding: 16px 12px;
+      gap: 8px;
+      border-right: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 4px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-header .logo {
+      font-size: 22px;
+    }
+
+    .sidebar-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+
+    .sidebar-header span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    #new-chat-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background 0.2s;
+      width: 100%;
+    }
+
+    #new-chat-btn:hover { background: var(--accent-hover); }
+
+    .sidebar-section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: 10px 4px 4px;
+    }
+
+    #docs-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .doc-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: default;
+      transition: background 0.15s;
+    }
+
+    .doc-item:hover { background: var(--bg-input); color: var(--text-primary); }
+
+    .doc-item .doc-icon { font-size: 14px; flex-shrink: 0; }
+
+    .doc-item .doc-name {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sidebar-footer {
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    /* ── Main Area ──────────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top Bar ────────────────────────────────────────────────── */
+    #topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-main);
+      flex-shrink: 0;
+    }
+
+    #topbar h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    #status-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #888;
+      transition: background 0.3s;
+    }
+
+    #status-dot.online  { background: var(--accent); }
+    #status-dot.offline { background: var(--danger); }
+
+    /* ── Chat Window ────────────────────────────────────────────── */
+    #chat-window {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 10%;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      scroll-behavior: smooth;
+    }
+
+    /* Scrollbar */
+    #chat-window::-webkit-scrollbar { width: 6px; }
+    #chat-window::-webkit-scrollbar-track { background: transparent; }
+    #chat-window::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* Welcome screen */
+    #welcome {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 12px;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    #welcome .welcome-icon { font-size: 48px; }
+    #welcome h2 { font-size: 22px; color: var(--text-primary); font-weight: 600; }
+    #welcome p  { font-size: 14px; max-width: 400px; line-height: 1.6; }
+
+    /* Messages */
+    .message {
+      display: flex;
+      gap: 14px;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .avatar.user { background: #5b5fc7; }
+    .avatar.bot  { background: var(--accent); }
+
+    .message-body { flex: 1; }
+
+    .message-role {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .message-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-primary);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .message-text.loading {
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .message-doc-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    /* ── Input Area ─────────────────────────────────────────────── */
+    #input-area {
+      padding: 16px 10%;
+      background: var(--bg-main);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #input-box {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: border-color 0.2s;
+    }
+
+    #input-box:focus-within { border-color: var(--accent); }
+
+    /* Attached file preview inside input box */
+    #file-preview {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    #file-preview.visible { display: flex; }
+
+    #file-preview .file-name {
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: var(--text-primary);
+    }
+
+    #remove-file {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 16px;
+      line-height: 1;
+      padding: 0 2px;
+    }
+
+    #remove-file:hover { color: var(--danger); }
+
+    .input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    #query-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-primary);
+      font-size: 14px;
+      resize: none;
+      min-height: 24px;
+      max-height: 160px;
+      line-height: 1.6;
+      font-family: inherit;
+    }
+
+    #query-input::placeholder { color: var(--text-muted); }
+
+    /* Icon buttons in input row */
+    .icon-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 18px;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+
+    .icon-btn:hover { background: var(--border); color: var(--text-primary); }
+
+    #send-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      cursor: pointer;
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+
+    #send-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    #send-btn:disabled { background: var(--border); cursor: not-allowed; }
+
+    #file-input { display: none; }
+
+    .input-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      padding-top: 6px;
+    }
+
+    /* ── Upload progress ────────────────────────────────────────── */
+    #upload-toast {
+      display: none;
+      position: fixed;
+      bottom: 30px;
+      right: 30px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 13px;
+      color: var(--text-primary);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      z-index: 100;
+      gap: 10px;
+      align-items: center;
+    }
+
+    #upload-toast.visible { display: flex; }
+    #upload-toast.success { border-color: var(--accent); }
+    #upload-toast.error   { border-color: var(--danger); }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>🤖 LLM RAG Learning Assistant</h1>
-        
-        <div class="info">
-            <p><strong>Status:</strong> <span class="status">Running</span></p>
-            <p><strong>Version:</strong> 1.0.0</p>
-            <p><strong>Environment:</strong> Development</p>
-        </div>
 
-        <h2>Available API Endpoints</h2>
-        
-        <div class="endpoint">
-            <strong>GET /health</strong><br>
-            Health check and database connection status
-        </div>
-
-        <div class="endpoint">
-            <strong>GET /api/users</strong><br>
-            Get all users
-        </div>
-
-        <div class="endpoint">
-            <strong>POST /api/users</strong><br>
-            Create a new user
-        </div>
-
-        <div class="endpoint">
-            <strong>GET /api/documents</strong><br>
-            Get all documents
-        </div>
-
-        <div class="endpoint">
-            <strong>POST /api/documents</strong><br>
-            Upload a new document
-        </div>
-
-        <div class="endpoint">
-            <strong>GET /api/sessions</strong><br>
-            Get all sessions
-        </div>
-
-        <div class="endpoint">
-            <strong>POST /api/sessions</strong><br>
-            Create a new session
-        </div>
-
-        <div class="endpoint">
-            <strong>POST /api/query</strong><br>
-            Ask a question (RAG pipeline - coming soon)
-        </div>
-
-        <div class="info">
-            <p><strong>Note:</strong> This is a REST API backend. Use tools like Postman, cURL, or a frontend application to interact with these endpoints.</p>
-            <p>Frontend implementation coming soon!</p>
-        </div>
+<!-- ── Sidebar ─────────────────────────────────────────────────────── -->
+<aside id="sidebar">
+  <div class="sidebar-header">
+    <span class="logo">🤖</span>
+    <div>
+      <h2>RAG Assistant</h2>
+      <span>AAI3008 LLM Project</span>
     </div>
+  </div>
+
+  <button id="new-chat-btn" onclick="newChat()">
+    ✏️ &nbsp;New Chat
+  </button>
+
+  <div class="sidebar-section-title">Uploaded Documents</div>
+
+  <div id="docs-list">
+    <div style="font-size:12px; color:var(--text-muted); padding:8px 4px;">
+      No documents yet
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    Backend: <span id="api-url">localhost:5000</span>
+  </div>
+</aside>
+
+<!-- ── Main ───────────────────────────────────────────────────────── -->
+<main id="main">
+
+  <!-- Top bar -->
+  <div id="topbar">
+    <h1>Chat</h1>
+    <div id="status-badge">
+      <div id="status-dot"></div>
+      <span id="status-text">Checking...</span>
+    </div>
+  </div>
+
+  <!-- Chat window -->
+  <div id="chat-window">
+    <div id="welcome">
+      <div class="welcome-icon">💬</div>
+      <h2>Ask your documents anything</h2>
+      <p>Upload a PDF using the 📎 button in the input box, then ask a question. The RAG pipeline will retrieve the most relevant chunks and generate an answer.</p>
+    </div>
+  </div>
+
+  <!-- Input area -->
+  <div id="input-area">
+    <div id="input-box">
+
+      <!-- File preview row (shown when file is attached) -->
+      <div id="file-preview">
+        <span>📄</span>
+        <span class="file-name" id="file-name-label"></span>
+        <button id="remove-file" onclick="removeFile()" title="Remove">✕</button>
+      </div>
+
+      <!-- Text + action row -->
+      <div class="input-row">
+        <!-- Upload button -->
+        <button class="icon-btn" title="Upload PDF" onclick="document.getElementById('file-input').click()">
+          📎
+        </button>
+        <input type="file" id="file-input" accept=".pdf,.docx,.pptx,.txt" onchange="onFileSelected(event)" />
+
+        <!-- Text area -->
+        <textarea
+          id="query-input"
+          rows="1"
+          placeholder="Ask a question about your documents..."
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+
+        <!-- Send button -->
+        <button id="send-btn" onclick="sendQuery()" title="Send">
+          ➤
+        </button>
+      </div>
+    </div>
+    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
+  </div>
+</main>
+
+<!-- Upload toast notification -->
+<div id="upload-toast">
+  <span id="toast-icon"></span>
+  <span id="toast-msg"></span>
+</div>
+
+<script>
+  const API = 'http://localhost:5000';
+  let attachedFile = null;
+  let messages = [];
+
+  // ── On load ──────────────────────────────────────────────────────
+  window.addEventListener('load', () => {
+    checkHealth();
+    loadDocuments();
+  });
+
+  // ── Health check ─────────────────────────────────────────────────
+  async function checkHealth() {
+    const dot  = document.getElementById('status-dot');
+    const text = document.getElementById('status-text');
+    try {
+      const res = await fetch(`${API}/health`);
+      if (res.ok) {
+        dot.className = 'online';
+        text.textContent = 'Connected';
+      } else {
+        throw new Error();
+      }
+    } catch {
+      dot.className = 'offline';
+      text.textContent = 'Offline';
+    }
+  }
+
+  // ── Load documents into sidebar ───────────────────────────────────
+  async function loadDocuments() {
+    try {
+      const res  = await fetch(`${API}/api/documents/`);
+      const data = await res.json();
+      const list = document.getElementById('docs-list');
+      const docs = data.documents || data || [];
+
+      if (!docs.length) return;
+
+      list.innerHTML = '';
+      docs.forEach(doc => {
+        const el = document.createElement('div');
+        el.className = 'doc-item';
+        el.innerHTML = `
+          <span class="doc-icon">📄</span>
+          <span class="doc-name" title="${doc.filename}">${doc.filename}</span>
+        `;
+        list.appendChild(el);
+      });
+    } catch (e) {
+      console.warn('Could not load documents:', e);
+    }
+  }
+
+  // ── File selection ────────────────────────────────────────────────
+  function onFileSelected(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    attachedFile = file;
+    document.getElementById('file-name-label').textContent = file.name;
+    document.getElementById('file-preview').classList.add('visible');
+  }
+
+  function removeFile() {
+    attachedFile = null;
+    document.getElementById('file-input').value = '';
+    document.getElementById('file-name-label').textContent = '';
+    document.getElementById('file-preview').classList.remove('visible');
+  }
+
+  // ── Send query ────────────────────────────────────────────────────
+  async function sendQuery() {
+    const textarea = document.getElementById('query-input');
+    const query    = textarea.value.trim();
+    if (!query && !attachedFile) return;
+
+    // Hide welcome screen
+    document.getElementById('welcome')?.remove();
+
+    // If a file is attached, upload it first
+    if (attachedFile) {
+      await uploadDocument(attachedFile);
+      removeFile();
+    }
+
+    if (!query) return;
+
+    // Append user message
+    appendMessage('user', null, query);
+    textarea.value = '';
+    autoResize(textarea);
+
+    // Append loading bot message
+    const loadingId = appendMessage('bot', null, '…', true);
+
+    // Call /api/query
+    try {
+      const res  = await fetch(`${API}/api/query/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: query }),
+      });
+      const data = await res.json();
+      const answer = data.answer || data.response || data.message || JSON.stringify(data);
+      updateMessage(loadingId, answer);
+    } catch (e) {
+      updateMessage(loadingId, `❌ Error: Could not reach the backend. Is Flask running?`);
+    }
+  }
+
+  // ── Upload document ───────────────────────────────────────────────
+  async function uploadDocument(file) {
+    showToast('⏳', `Uploading ${file.name}…`);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('subject', 'demo');
+
+    try {
+      const res = await fetch(`${API}/api/documents/`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        showToast('✅', `${file.name} uploaded successfully`, 'success');
+        loadDocuments();   // refresh sidebar
+      } else {
+        const err = await res.json();
+        showToast('❌', err.error || 'Upload failed', 'error');
+      }
+    } catch (e) {
+      showToast('❌', 'Upload failed — backend unreachable', 'error');
+    }
+  }
+
+  // ── Message helpers ───────────────────────────────────────────────
+  let msgCounter = 0;
+
+  function appendMessage(role, docName, text, isLoading = false) {
+    const id   = `msg-${++msgCounter}`;
+    const win  = document.getElementById('chat-window');
+    const div  = document.createElement('div');
+    div.className = 'message';
+    div.id = id;
+
+    const isUser = role === 'user';
+    div.innerHTML = `
+      <div class="avatar ${role}">${isUser ? '👤' : '🤖'}</div>
+      <div class="message-body">
+        <div class="message-role">${isUser ? 'You' : 'RAG Assistant'}</div>
+        ${docName ? `<div class="message-doc-badge">📄 ${docName}</div>` : ''}
+        <div class="message-text ${isLoading ? 'loading' : ''}">${escapeHtml(text)}</div>
+      </div>
+    `;
+    win.appendChild(div);
+    win.scrollTop = win.scrollHeight;
+    return id;
+  }
+
+  function updateMessage(id, text) {
+    const el = document.querySelector(`#${id} .message-text`);
+    if (el) {
+      el.textContent = text;
+      el.classList.remove('loading');
+    }
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── New chat ──────────────────────────────────────────────────────
+  function newChat() {
+    const win = document.getElementById('chat-window');
+    win.innerHTML = `
+      <div id="welcome">
+        <div class="welcome-icon">💬</div>
+        <h2>Ask your documents anything</h2>
+        <p>Upload a PDF using the 📎 button in the input box, then ask a question.</p>
+      </div>
+    `;
+    messages = [];
+    removeFile();
+    document.getElementById('query-input').value = '';
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────────
+  let toastTimeout;
+  function showToast(icon, msg, type = '') {
+    const toast = document.getElementById('upload-toast');
+    document.getElementById('toast-icon').textContent = icon;
+    document.getElementById('toast-msg').textContent  = msg;
+    toast.className = `visible ${type}`;
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => { toast.className = ''; }, 3500);
+  }
+
+  // ── Input helpers ─────────────────────────────────────────────────
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendQuery();
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }
+</script>
 </body>
 </html>
