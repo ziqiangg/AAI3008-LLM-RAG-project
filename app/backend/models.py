@@ -16,11 +16,12 @@ class User(Base):
     """User model for storing user account information"""
     __tablename__ = 'users'
     
-    id = Column(Integer, primary_key=True)
-    username = Column(String(255), unique=True, nullable=False)
-    email = Column(String(255), unique=True, nullable=False)
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id            = Column(Integer, primary_key=True)
+    username      = Column(String(255), unique=True, nullable=False)
+    email         = Column(String(255), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=False)          # ← NEW
+    created_at    = Column(TIMESTAMP, default=datetime.utcnow)
+    updated_at    = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
@@ -44,13 +45,13 @@ class Document(Base):
     """Document model for storing uploaded document metadata"""
     __tablename__ = 'documents'
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    filename = Column(String(255), nullable=False)
-    file_path = Column(String(500), nullable=False)
-    file_type = Column(String(50))  # e.g., 'pdf', 'docx'
-    title = Column(Text)
-    subject = Column(String(255))  # e.g., 'Mathematics', 'ML'
+    id          = Column(Integer, primary_key=True)
+    user_id     = Column(Integer, ForeignKey('users.id'))
+    filename    = Column(String(255), nullable=False)
+    file_path   = Column(String(500), nullable=False)
+    file_type   = Column(String(50))  # e.g., 'pdf', 'docx'
+    title       = Column(Text)
+    subject     = Column(String(255))  # e.g., 'Mathematics', 'ML'
     upload_date = Column(TIMESTAMP, default=datetime.utcnow)
     chunk_count = Column(Integer, default=0)
     
@@ -80,14 +81,16 @@ class Session(Base):
     """Session model for managing user sessions with conversation history"""
     __tablename__ = 'sessions'
     
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    document_ids = Column(ARRAY(Integer))  # Array of document IDs
-    created_at = Column(TIMESTAMP, default=datetime.utcnow)
-    last_accessed = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id              = Column(Integer, primary_key=True)
+    user_id         = Column(Integer, ForeignKey('users.id'))
+    title           = Column(String(255), default='New Chat')
+    document_ids    = Column(ARRAY(Integer))  # Array of document IDs
+    created_at      = Column(TIMESTAMP, default=datetime.utcnow)
+    last_accessed   = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
     user = relationship("User", back_populates="sessions")
+    messages = relationship("Message", back_populates="session", cascade="all, delete-orphan", order_by="Message.created_at")
     
     def to_dict(self):
         """Convert model to dictionary"""
@@ -102,6 +105,24 @@ class Session(Base):
     def __repr__(self):
         return f"<Session(id={self.id}, user_id={self.user_id})>"
 
+class Message(Base):                                             
+    __tablename__ = 'messages'
+    id         = Column(Integer, primary_key=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'), nullable=False)
+    role       = Column(String(20), nullable=False)   # 'user' | 'assistant'
+    content    = Column(Text, nullable=False)
+    sources    = Column(JSONB)                        # retrieved chunk references
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+
+    session = relationship("Session", back_populates="messages")
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'session_id': self.session_id,
+            'role': self.role, 'content': self.content,
+            'sources': self.sources,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
 
 class DocumentChunk(Base):
     """Document chunk model for storing text chunks with vector embeddings"""
