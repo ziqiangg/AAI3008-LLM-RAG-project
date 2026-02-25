@@ -1,9 +1,11 @@
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 from app.backend.config import config
 from app.backend.database import close_db_session
 import os
 
+jwt = JWTManager()
 
 def create_app(config_name=None):
     if config_name is None:
@@ -12,8 +14,14 @@ def create_app(config_name=None):
     app = Flask(__name__)
     app.config.from_object(config[config_name])
 
+    # Ensure JWT secret key is set (can also come from .env)
+    app.config["JWT_SECRET_KEY"] = getattr(config, "SECRET_KEY", "dev-secret-key-change-in-production")
+
     CORS(app)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+    # initialize JWT with app
+    jwt.init_app(app)
 
     register_blueprints(app)
     register_error_handlers(app)
@@ -31,13 +39,11 @@ def create_app(config_name=None):
 
 
 def register_blueprints(app):
-    from app.backend.routes.health    import health_bp
     from app.backend.routes.users     import users_bp
     from app.backend.routes.documents import documents_bp
     from app.backend.routes.sessions  import sessions_bp
     from app.backend.routes.query     import query_bp
 
-    app.register_blueprint(health_bp)
     app.register_blueprint(users_bp,     url_prefix='/api/users')
     app.register_blueprint(documents_bp, url_prefix='/api/documents')
     app.register_blueprint(sessions_bp,  url_prefix='/api/sessions')

@@ -1,86 +1,94 @@
 """
-User management routes
+User auth blueprint  →  /api/users/*
 """
+from datetime import timedelta
 from flask import Blueprint, request, jsonify
-from app.backend.database import get_db_session
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from app.backend.database import get_db_session as get_db
 from app.backend.models import User
-from sqlalchemy.exc import IntegrityError
 
 users_bp = Blueprint('users', __name__)
 
 
-@users_bp.route('/', methods=['GET'])
-def get_users():
-    """Get all users"""
-    session = get_db_session()
-    try:
-        users = session.query(User).all()
-        return jsonify([user.to_dict() for user in users]), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+@users_bp.route('/register', methods=['POST'])
+def register():
+    data     = request.get_json(silent=True) or {}
+    username = data.get('username', '').strip()
+    email    = data.get('email', '').strip().lower()
+    password = data.get('password', '')
 
+    if not all([username, email, password]):
+        return jsonify({'error': 'username, email, and password are required'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
 
-@users_bp.route('/<int:user_id>', methods=['GET'])
-def get_user(user_id):
-    """Get user by ID"""
-    session = get_db_session()
-    try:
-        user = session.query(User).filter_by(id=user_id).first()
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-        return jsonify(user.to_dict()), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+    with get_db() as db:
+        if db.query(User).filter_by(email=email).first():
+            return jsonify({'error': 'Email already registered'}), 409
+        if db.query(User).filter_by(username=username).first():
+            return jsonify({'error': 'Username already taken'}), 409
 
-
-@users_bp.route('/', methods=['POST'])
-def create_user():
-    """Create a new user"""
-    session = get_db_session()
-    try:
-        data = request.get_json()
-        
-        if not data or 'username' not in data or 'email' not in data:
-            return jsonify({'error': 'Username and email are required'}), 400
-        
         user = User(
-            username=data['username'],
-            email=data['email']
+            username=username,
+            email=email,
+            password_hash=generate_password_hash(password),
         )
-        
-        session.add(user)
-        session.commit()
-        
-        return jsonify(user.to_dict()), 201
-    except IntegrityError:
-        session.rollback()
-        return jsonify({'error': 'Username or email already exists'}), 409
-    except Exception as e:
-        session.rollback()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+        db.add(user)
+        db.commit()
+
+        token = create_access_token(
+            identity=str(user.id),
+            expires_delta=timedelta(days=7),
+        )
+        return jsonify({'token': token, 'user': user.to_dict()}), 201
 
 
-@users_bp.route('/<int:user_id>', methods=['DELETE'])
-def delete_user(user_id):
-    """Delete a user"""
-    session = get_db_session()
-    try:
-        user = session.query(User).filter_by(id=user_id).first()
+@users_bp.route('/login', methods=['POST'])
+def login():
+    data     = request.get_json(silent=True) or {}
+    email    = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+
+    if not all([email, password]):
+        return jsonify({'error': 'email and password are required'}), 400
+
+    with get_db() as db:
+        user = db.query(User).filter_by(email=email).first()
+        if not user or not check_password_hash(user.password_hash, password):
+            return jsonify({'error': 'Invalid email or password'}), 401
+
+        token = create_access_token(
+            identity=str(user.id),
+            expires_delta=timedelta(days=7),
+        )
+        return jsonify({'token': token, 'user': user.to_dict()}), 200
+
+
+@users_bp.route('/me', methods=['GET'])
+@jwt_required()
+def me():
+    user_id = int(get_jwt_identity())
+    with get_db() as db:
+        user = db.query(User).filter_by(id=user_id).first()
         if not user:
             return jsonify({'error': 'User not found'}), 404
-        
-        session.delete(user)
-        session.commit()
-        
-        return jsonify({'message': 'User deleted successfully'}), 200
-    except Exception as e:
-        session.rollback()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+        return jsonify({'user': user.to_dict()}), 200
+
+
+@users_bp.route('/me', methods=['PATCH'])
+@jwt_required()
+def update_me():
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    with get_db() as db:
+        user = db.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        if 'username' in data:
+            user.username = data['username'].strip()
+        if 'email' in data:
+            user.email = data['email'].strip().lower()
+        db.commit()
+        return jsonify({'user': user.to_dict()}), 200

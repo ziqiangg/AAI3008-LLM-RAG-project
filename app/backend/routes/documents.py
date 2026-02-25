@@ -1,117 +1,102 @@
-"""
-Document management routes
-"""
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
+from werkzeug.utils import secure_filename
+import os
+
+from app.backend.models import Document, DocumentChunk
 from app.backend.database import get_db_session
-from app.backend.models import Document, User
-from datetime import datetime
+from app.backend.config import Config
+from app.backend.services.injestion import run_ingestion_pipeline  # adjust path if needed
 
-documents_bp = Blueprint('documents', __name__)
+documents_bp = Blueprint("documents", __name__)
 
-
-@documents_bp.route('/', methods=['GET'])
+# ── Existing GET /api/documents/ route (leave as you have it) ──
+@documents_bp.route("/", methods=["GET"])
 def get_documents():
-    """Get all documents (optionally filtered by user_id)"""
-    session = get_db_session()
+    user_id = request.args.get("user_id", type=int)
+    with get_db_session() as session:
+        query = session.query(Document)
+        if user_id is not None:
+            query = query.filter_by(user_id=user_id)
+        docs = query.order_by(Document.upload_date.desc()).all()
+        return jsonify({"documents": [d.to_dict() for d in docs]}), 200
+
+
+# ── NEW: POST /api/documents/upload ─────────────────────────────
+@documents_bp.route("/upload", methods=["POST"])
+def upload_document():
+    """
+    Accept a file upload, save it to UPLOAD_FOLDER,
+    then run the LangChain ingestion pipeline:
+    Load → Split → Embed → Store (Document + DocumentChunk).
+    """
+    if "file" not in request.files:
+        return jsonify({"error": "No file part in request"}), 400
+
+    file = request.files["file"]
+    if not file or file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    ext = file.filename.rsplit(".", 1)[-1].lower()
+    if ext not in Config.ALLOWED_EXTENSIONS:
+        return jsonify({
+            "error": f"File type not allowed. Supported types: {Config.ALLOWED_EXTENSIONS}"
+        }), 415
+
+    subject = request.form.get("subject", "General")
+    user_id = request.form.get("user_id", type=int)
+
+    # Save file to disk
+    filename = secure_filename(file.filename)
+    upload_dir = Config.UPLOAD_FOLDER
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, filename)
+    file.save(file_path)
+    current_app.logger.info(f"Saved upload to {file_path}")
+
     try:
-        user_id = request.args.get('user_id', type=int)
-        
-        if user_id:
-            documents = session.query(Document).filter_by(user_id=user_id).all()
-        else:
-            documents = session.query(Document).all()
-        
-        return jsonify([doc.to_dict() for doc in documents]), 200
+        with get_db_session() as session:
+            doc = run_ingestion_pipeline(
+                db_session=session,
+                file_path=file_path,
+                user_id=user_id,
+                subject=subject,
+            )
+            # run_ingestion_pipeline commits internally; we just return the doc
+            return jsonify({
+                "message": "Document uploaded and ingested successfully.",
+                "document": doc.to_dict(),
+            }), 201
+    except ValueError as e:
+        current_app.logger.error(f"Ingestion error for {filename}: {e}")
+        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+        current_app.logger.error(f"Ingestion error for {filename}: {e}")
+        return jsonify({"error": "Ingestion failed. See server logs."}), 500
 
+# ── DELETE /api/documents/<id> ─────────────────────────────
+@documents_bp.route("/<int:doc_id>", methods=["DELETE"])
+def delete_document(doc_id: int):
+    """
+    Delete a document and its chunks, and remove the underlying file.
+    """
+    with get_db_session() as session:
+        doc = session.query(Document).filter_by(id=doc_id).first()
+        if not doc:
+            return jsonify({"error": f"Document {doc_id} not found"}), 404
 
-@documents_bp.route('/<int:document_id>', methods=['GET'])
-def get_document(document_id):
-    """Get document by ID"""
-    session = get_db_session()
-    try:
-        document = session.query(Document).filter_by(id=document_id).first()
-        if not document:
-            return jsonify({'error': 'Document not found'}), 404
-        return jsonify(document.to_dict()), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+        file_path = doc.file_path
 
+        # If you don't have ON DELETE CASCADE on FK, explicitly delete chunks:
+        session.query(DocumentChunk).filter_by(document_id=doc_id).delete()
 
-@documents_bp.route('/', methods=['POST'])
-def create_document():
-    """Create a new document record"""
-    session = get_db_session()
-    try:
-        data = request.get_json()
-        
-        # Validate required fields
-        required_fields = ['user_id', 'filename', 'file_path']
-        if not all(field in data for field in required_fields):
-            return jsonify({'error': f'Required fields: {", ".join(required_fields)}'}), 400
-        
-        # Check if user exists
-        user = session.query(User).filter_by(id=data['user_id']).first()
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-        
-        document = Document(
-            user_id=data['user_id'],
-            filename=data['filename'],
-            file_path=data['file_path'],
-            file_type=data.get('file_type'),
-            title=data.get('title'),
-            subject=data.get('subject')
-        )
-        
-        session.add(document)
-        session.commit()
-        
-        return jsonify(document.to_dict()), 201
-    except Exception as e:
-        session.rollback()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+        session.delete(doc)
+        # session.commit() is handled by get_db_session context manager
 
+    # Remove file from disk after DB commit
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except OSError:
+            current_app.logger.warning(f"Failed to delete file {file_path}")
 
-@documents_bp.route('/<int:document_id>', methods=['DELETE'])
-def delete_document(document_id):
-    """Delete a document"""
-    session = get_db_session()
-    try:
-        document = session.query(Document).filter_by(id=document_id).first()
-        if not document:
-            return jsonify({'error': 'Document not found'}), 404
-        
-        session.delete(document)
-        session.commit()
-        
-        return jsonify({'message': 'Document deleted successfully'}), 200
-    except Exception as e:
-        session.rollback()
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
-
-
-@documents_bp.route('/<int:document_id>/chunks', methods=['GET'])
-def get_document_chunks(document_id):
-    """Get all chunks for a document"""
-    session = get_db_session()
-    try:
-        document = session.query(Document).filter_by(id=document_id).first()
-        if not document:
-            return jsonify({'error': 'Document not found'}), 404
-        
-        chunks = [chunk.to_dict() for chunk in document.chunks]
-        return jsonify(chunks), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-    finally:
-        session.close()
+    return jsonify({"message": f"Document {doc_id} and its chunks deleted."}), 200
