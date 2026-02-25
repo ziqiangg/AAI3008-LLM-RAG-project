@@ -1,7 +1,7 @@
 # THESE ARE TENTATIVE AND MAYBE BE CHANGED FOR CONFIRMED VERSIONS INDICATE WITH A TICK ✅
 
 Flask==3.0.3
-Flask-CORS==4.0.0                       # For handling Cross-Origin Resource Sharing
+Flask-CORS==4.0.0                   # For handling Cross-Origin Resource Sharing
 langchain==0.2.13                   # Updated to match langchain-community requirement
 langchain-community==0.2.12
 langchain-core==0.2.30
@@ -17,3 +17,8 @@ pdf2image==1.17.0                   # Optional: for PDF rendering if needed
 Pillow==10.3.0                      # Required by pdf2image
 transformers==4.41.2                # Underlying library for sentence-transformers (includes cross-encoders)
 torch==2.3.1                        # PyTorch (required by sentence-transformers & transformers)
+flask-jwt-extended==4.7.1
+PyJWT==2.8.0 
+Werkzeug==3.0.6
+langchain-huggingface==0.0.3
+pdfplumber==0.7.0
