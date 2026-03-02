@@ -34,11 +34,10 @@ class Config:
     # API Keys
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
     
-    # AWS Configuration (Optional)
-    AWS_ACCESS_KEY_ID       = os.getenv('AWS_ACCESS_KEY_ID', '')
-    AWS_SECRET_ACCESS_KEY   = os.getenv('AWS_SECRET_ACCESS_KEY', '')
-    AWS_REGION              = os.getenv('AWS_REGION', 'us-east-1')
-    S3_BUCKET_NAME          = os.getenv('S3_BUCKET_NAME', '')
+    # Google Cloud Configuration (Optional)
+    GCP_PROJECT_ID          = os.getenv('GCP_PROJECT_ID', '')
+    GCP_SERVICE_ACCOUNT_KEY = os.getenv('GCP_SERVICE_ACCOUNT_KEY', '')
+    GCS_BUCKET_NAME         = os.getenv('GCS_BUCKET_NAME', '')
     
     # Upload Configuration
     UPLOAD_FOLDER       = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads')
@@ -65,7 +64,7 @@ class Config:
     MAX_CONVERSATION_HISTORY = 10  # Last N messages to include in context
     
     # System Prompt Template
-    SYSTEM_PROMPT = """You are an AI learning assistant for AAI3008 course materials. Your role is to help students understand concepts from their uploaded documents.
+    SYSTEM_PROMPT = """You are an AI learning assistant for course materials. Your role is to help students understand concepts from their uploaded documents.
 
 CORE PRINCIPLES:
 1. **Grounding**: Base ALL answers strictly on the provided context from retrieved document chunks. Never make up information.

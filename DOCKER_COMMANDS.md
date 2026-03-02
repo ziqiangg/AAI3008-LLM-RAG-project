@@ -88,6 +88,15 @@ docker-compose exec -T db psql -U postgres llm_rag_db < backup.sql
 
 # Check if pgvector extension is installed
 docker-compose exec db psql -U postgres -d llm_rag_db -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
+
+# Test if backend is accessible
+curl http://localhost:5000
+
+# Check document was created
+docker exec llm_rag_db psql -U postgres -d llm_rag_db -c "SELECT * FROM documents;"
+
+# Check chunks were created with embeddings
+docker exec llm_rag_db psql -U postgres -d llm_rag_db -c "SELECT id, document_id, chunk_order, LEFT(content, 50) FROM document_chunks;"
 ```
 
 ## Building and Cleaning

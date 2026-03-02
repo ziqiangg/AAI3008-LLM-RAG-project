@@ -11,7 +11,7 @@ psycopg2-binary==2.9.9              # PostgreSQL adapter
 pgvector==0.3.4                     # pgvector support for SQLAlchemy
 sqlalchemy==2.0.30                  # ORM for database interactions
 python-dotenv==1.0.1                # For managing environment variables (e.g., API keys)
-boto3==1.34.124                     # AWS SDK (for S3 file handling if done in-app)
+google-cloud-storage==2.14.0        # Google Cloud SDK (for Cloud Storage file handling)
 unstructured==0.15.7                # For robust document parsing (PDF, DOCX, PPTX, etc.)
 pdf2image==1.17.0                   # Optional: for PDF rendering if needed
 Pillow==10.3.0                      # Required by pdf2image

@@ -1,6 +1,6 @@
 # AAI3008-LLM-RAG-project
 
-This project builds a Retrieval-Augmented Generation (RAG) learning assistant that enables students to upload academic documents (PDFs, DOCX, etc.) and receive AI-powered, context-aware answers grounded in their materials. Using Flask, Gemini 2.5 flash API, and LangChain, the system extracts text, applies semantic chunking, and stores embeddings in a PostgreSQL + pgvector database on AWS RDS. Queries trigger a two-stage retrieval process—vector similarity search followed by cross-encoder reranking—to fetch the most relevant content, which Gemini 2.5 flash uses to generate accurate, cited responses. The assistant supports interactive sessions with dynamic conversation memory, multilingual translation, and optional diagram generation via Mermaid/Desmos. Hosted on AWS (EC2, S3, RDS), it offers a scalable, cost-efficient platform for personalized, document-grounded learning.
+This project builds a Retrieval-Augmented Generation (RAG) learning assistant that enables students to upload academic documents (PDFs, DOCX, etc.) and receive AI-powered, context-aware answers grounded in their materials. Using Flask, Gemini 2.5 flash API, and LangChain, the system extracts text, applies semantic chunking, and stores embeddings in a PostgreSQL + pgvector database on Google Cloud SQL. Queries trigger a two-stage retrieval process—vector similarity search followed by cross-encoder reranking—to fetch the most relevant content, which Gemini 2.5 flash uses to generate accurate, cited responses. The assistant supports interactive sessions with dynamic conversation memory, multilingual translation, and optional diagram generation via Mermaid/Desmos. Hosted on Google Cloud Platform (Compute Engine, Cloud Storage, Cloud SQL), it offers a scalable, cost-efficient platform for personalized, document-grounded learning.
 
 ## Development
 
@@ -29,7 +29,7 @@ This project builds a Retrieval-Augmented Generation (RAG) learning assistant th
 
 **Utilities:**
 - python-dotenv 1.0.1 - Environment variable management
-- boto3 1.34.124 - AWS SDK (for S3 integration)
+- google-cloud-storage 2.14.0 - Google Cloud SDK (for Cloud Storage integration)
 
 ### Project Structure
 
@@ -312,23 +312,23 @@ For detailed schema structure, see [schema_dump/schema.sql](schema_dump/schema.s
 ### Cloud Infrastructure Stack
 
 **Compute:**
-- AWS EC2 - Application hosting
+- Google Compute Engine - Application hosting
 
 **Storage:**
-- AWS S3 - Document file storage
+- Google Cloud Storage - Document file storage
 
 **Database:**
-- AWS RDS (PostgreSQL 18 + pgvector) - Managed database service
+- Google Cloud SQL (PostgreSQL 18 + pgvector) - Managed database service
 
 **Networking:**
-- VPC - Virtual Private Cloud
-- Security Groups - Firewall rules
-- Elastic IP - Static IP address (optional)
+- VPC Network - Virtual Private Cloud
+- Firewall Rules - Network security
+- Static External IP - Reserved IP address (optional)
 
 ### Prerequisites
 
-- AWS Account with appropriate IAM permissions
-- AWS CLI installed and configured
+- Google Cloud Platform account with appropriate IAM roles
+- gcloud CLI installed and configured
 - Domain name (optional, for custom DNS)
 - SSL/TLS certificate (recommended for HTTPS) #NOT CONFIRMED IF WE ARE DOING THIS
 
