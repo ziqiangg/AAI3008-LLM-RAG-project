@@ -17,7 +17,13 @@ def create_app(config_name=None):
     # Ensure JWT secret key is set (can also come from .env)
     app.config["JWT_SECRET_KEY"] = getattr(config, "SECRET_KEY", "dev-secret-key-change-in-production")
 
-    CORS(app)
+    # Configure CORS with explicit settings
+    CORS(app, 
+         resources={r"/api/*": {"origins": "*"}},
+         allow_headers=["Content-Type", "Authorization"],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         supports_credentials=False)
+    
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
     # initialize JWT with app
@@ -34,6 +40,11 @@ def create_app(config_name=None):
             os.path.join(os.path.dirname(__file__), '../frontend'),
             'index.html'
         )
+
+    # ── Health Check ──────────────────────────────────────────────
+    @app.route('/api/health')
+    def health():
+        return jsonify({'status': 'healthy', 'service': 'rag-backend'}), 200
 
     return app
 

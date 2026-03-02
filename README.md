@@ -1,6 +1,6 @@
 # AAI3008-LLM-RAG-project
 
-This project builds a Retrieval-Augmented Generation (RAG) learning assistant that enables students to upload academic documents (PDFs, DOCX, etc.) and receive AI-powered, context-aware answers grounded in their materials. Using Flask, Gemini 1.5 API, and LangChain, the system extracts text, applies semantic chunking, and stores embeddings in a PostgreSQL + pgvector database on AWS RDS. Queries trigger a two-stage retrieval process—vector similarity search followed by cross-encoder reranking—to fetch the most relevant content, which Gemini 1.5 uses to generate accurate, cited responses. The assistant supports interactive sessions with dynamic conversation memory, multilingual translation, and optional diagram generation via Mermaid/Desmos. Hosted on AWS (EC2, S3, RDS), it offers a scalable, cost-efficient platform for personalized, document-grounded learning.
+This project builds a Retrieval-Augmented Generation (RAG) learning assistant that enables students to upload academic documents (PDFs, DOCX, etc.) and receive AI-powered, context-aware answers grounded in their materials. Using Flask, Gemini 2.5 flash API, and LangChain, the system extracts text, applies semantic chunking, and stores embeddings in a PostgreSQL + pgvector database on AWS RDS. Queries trigger a two-stage retrieval process—vector similarity search followed by cross-encoder reranking—to fetch the most relevant content, which Gemini 2.5 flash uses to generate accurate, cited responses. The assistant supports interactive sessions with dynamic conversation memory, multilingual translation, and optional diagram generation via Mermaid/Desmos. Hosted on AWS (EC2, S3, RDS), it offers a scalable, cost-efficient platform for personalized, document-grounded learning.
 
 ## Development
 
@@ -11,7 +11,7 @@ This project builds a Retrieval-Augmented Generation (RAG) learning assistant th
 - Flask-CORS 4.0.0 - Cross-Origin Resource Sharing
 
 **AI/ML Stack:**
-- Google Gemini 1.5 API - Large Language Model
+- Google Gemini 2.5 Flash API - Large Language Model
 - LangChain 0.2.12 - LLM framework for RAG orchestration
 - Sentence Transformers 3.0.1 - Embedding generation (All-MiniLM-L6-v2)
 - Cross-Encoder 0.4.0 - Reranking (ms-marco model)

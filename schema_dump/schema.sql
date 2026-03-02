@@ -5,16 +5,17 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- Table: users
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table: documents
-CREATE TABLE documents (
+CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
     filename VARCHAR(255) NOT NULL,
@@ -27,16 +28,27 @@ CREATE TABLE documents (
 );
 
 -- Table: sessions
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id),
+    title VARCHAR(255) DEFAULT 'New Chat',
     document_ids INTEGER[], -- Array of document IDs
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_accessed TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Table: messages
+CREATE TABLE IF NOT EXISTS messages (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES sessions(id) ON DELETE CASCADE,
+    role VARCHAR(20) NOT NULL, -- 'user' or 'assistant'
+    content TEXT NOT NULL,
+    sources JSONB, -- Retrieved chunk references
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Table: document_chunks
-CREATE TABLE document_chunks (
+CREATE TABLE IF NOT EXISTS document_chunks (
     id SERIAL PRIMARY KEY,
     document_id INTEGER REFERENCES documents(id),
     chunk_order INTEGER NOT NULL,

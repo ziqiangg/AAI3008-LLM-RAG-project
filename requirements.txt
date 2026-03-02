@@ -5,7 +5,7 @@ Flask-CORS==4.0.0                   # For handling Cross-Origin Resource Sharing
 langchain==0.2.13                   # Updated to match langchain-community requirement
 langchain-community==0.2.12
 langchain-core==0.2.30
-google-generativeai==0.8.3          # For Gemini 1.5 API
+google-generativeai==0.8.3          # For Gemini 2.5 flash API
 sentence-transformers==3.0.1        # For All-MiniLM-L6-v2 embeddings and cross-encoder reranking
 psycopg2-binary==2.9.9              # PostgreSQL adapter
 pgvector==0.3.4                     # pgvector support for SQLAlchemy

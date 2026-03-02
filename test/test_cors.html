@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CORS Test</title>
+</head>
+<body>
+    <h1>CORS Test Page</h1>
+    <button onclick="testCORS()">Test Query Endpoint</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testCORS() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        question: 'What is machine learning?'
+                    })
+                });
+                
+                const data = await response.json();
+                resultEl.textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                resultEl.textContent = 'Error: ' + error.message + '\n\nCheck browser console for details.';
+                console.error('Fetch error:', error);
+            }
+        }
+        
+        // Also test the health endpoint
+        async function testHealth() {
+            try {
+                const response = await fetch('http://localhost:5000/api/health');
+                const data = await response.json();
+                console.log('Health check:', data);
+            } catch (error) {
+                console.error('Health check failed:', error);
+            }
+        }
+        
+        // Test on load
+        window.addEventListener('load', testHealth);
+    </script>
+</body>
+</html>

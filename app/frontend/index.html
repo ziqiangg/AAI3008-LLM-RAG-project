@@ -565,10 +565,25 @@ let currentSession = null;      // active session id
 
 // ── Bootstrap ─────────────────────────────────
 window.addEventListener('load', () => {
-  checkHealth();
   loadDocuments();
   if (currentToken) restoreSession();
 });
+
+// ══════════════════════════════════════════════
+// HEALTH CHECK (Optional - removed from bootstrap)
+// ══════════════════════════════════════════════
+async function checkHealth() {
+  try {
+    const res = await fetch(`${API}/api/health`);
+    if (res.ok) {
+      console.log('✓ Backend is healthy');
+      return true;
+    }
+  } catch (e) {
+    console.warn('Backend health check failed:', e);
+    return false;
+  }
+}
 
 // ══════════════════════════════════════════════
 // AUTH

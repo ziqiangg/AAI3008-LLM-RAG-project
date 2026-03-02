@@ -1,0 +1,30 @@
+
+Machine Learning Basics
+
+Machine learning is a subset of artificial intelligence that focuses on training algorithms 
+to learn patterns from data. There are three main types of machine learning:
+
+1. Supervised Learning
+In supervised learning, the algorithm learns from labeled training data. The model is trained 
+on input-output pairs and learns to map inputs to correct outputs. Common algorithms include 
+linear regression, decision trees, and neural networks.
+
+2. Unsupervised Learning
+Unsupervised learning involves finding patterns in unlabeled data. The algorithm tries to 
+discover hidden structures without explicit guidance. Common techniques include clustering 
+(like K-means) and dimensionality reduction (like PCA).
+
+3. Reinforcement Learning
+Reinforcement learning involves an agent learning to make decisions by interacting with an 
+environment. The agent receives rewards or penalties for its actions and learns to maximize 
+cumulative reward over time. This is used in game playing and robotics.
+
+Neural Networks
+Neural networks are computing systems inspired by biological neural networks. They consist of 
+interconnected nodes (neurons) organized in layers. Deep learning uses neural networks with 
+many layers to learn hierarchical representations of data.
+
+Applications
+Machine learning has many applications including image recognition, natural language processing, 
+recommendation systems, autonomous vehicles, and medical diagnosis.
+                
