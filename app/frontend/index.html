@@ -392,6 +392,18 @@
     }
     .session-item:hover { background: var(--bg-input); color: var(--text-primary); }
     .session-item .session-icon { flex-shrink: 0; }
+    .session-item .session-title {
+      flex: 1; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .session-item .session-del {
+      background: none; border: none; cursor: pointer;
+      color: var(--text-muted); font-size: 14px;
+      padding: 0 2px; opacity: 0; transition: opacity 0.15s;
+      flex-shrink: 0;
+    }
+    .session-item:hover .session-del { opacity: 1; }
+    .session-item .session-del:hover { color: var(--danger); }
 
     /* ══════════════════════════════════════════
        AUTH MODAL
@@ -834,7 +846,8 @@ async function loadSessions() {
     list.innerHTML = data.sessions.map(s => `
       <div class="session-item" onclick="loadSession(${s.id})" title="${escapeHtml(s.title)}">
         <span class="session-icon">💬</span>
-        <span>${escapeHtml(s.title || 'Untitled')}</span>
+        <span class="session-title">${escapeHtml(s.title || 'Untitled')}</span>
+        <button class="session-del" onclick="deleteSession(${s.id}, event)" title="Delete session">✕</button>
       </div>`
     ).join('');
   } catch(e) { console.warn('Could not load sessions', e); }
@@ -882,6 +895,29 @@ async function ensureSession() {
     const data = await res.json();
     if (res.ok) { currentSession = data.session.id; loadSessions(); }
   } catch(e) { console.warn('Could not create session', e); }
+}
+
+async function deleteSession(sessionId, e) {
+  e.stopPropagation(); // Prevent loadSession from firing
+  if (!confirm('Delete this chat session and all its messages?')) return;
+  try {
+    const res = await authFetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('🗑️', 'Session deleted.', 'success');
+      
+      // If deleted session is currently active, clear the chat
+      if (currentSession === sessionId) {
+        newChat(); // This clears currentSession and the chat window
+      }
+      
+      // Refresh session list
+      loadSessions();
+    } else {
+      showToast('❌', 'Delete failed.', 'error');
+    }
+  } catch {
+    showToast('❌', 'Backend unreachable.', 'error');
+  }
 }
 
 // ══════════════════════════════════════════════
