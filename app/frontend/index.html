@@ -101,8 +101,8 @@
       text-align: center;
     }
     .source-card.active {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px rgba(16,163,127,0.25);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.0);
     }
 
     /* Chunk cards inside doc modal */
@@ -729,6 +729,10 @@ async function checkHealth() {
 }
 let activeSource = null;
 
+// Keep doc maps so Sources can open the right doc
+window._docsById = {};
+window._docIdByFilename = {};
+
 function setActiveSource(i) {
   const sources = (window._lastSources || []);
   activeSource = sources[i] || null;
@@ -738,8 +742,26 @@ function setActiveSource(i) {
     el.classList.toggle('active', idx === i);
   });
 
-  showToast('✅', activeSource ? 'Source selected. Open a document to highlight the matching chunk.' : 'No source selected', 'success');
+  // Auto-open the document + highlight the chunk
+  if (activeSource) {
+    const docId =
+      activeSource.doc_id ||
+      (activeSource.filename ? window._docIdByFilename[activeSource.filename] : null);
+
+    if (docId) {
+      const filename = activeSource.filename || (window._docsById[docId]?.filename ?? `Document ${docId}`);
+      previewDoc(docId, filename, {
+        chunkOrder: activeSource.chunk_order ?? null,
+        needle: activeSource.content || activeSource.snippet || ""
+      });
+    } else {
+      showToast('✅', 'Source selected. (No doc_id/filename mapping found to auto-open preview.)', 'success');
+    }
+  } else {
+    showToast('✅', 'No source selected', 'success');
+  }
 }
+
 // ══════════════════════════════════════════════
 // AUTH
 // ══════════════════════════════════════════════
@@ -1060,17 +1082,24 @@ async function uploadDocumentFromSidebar(file) {
 
 async function loadDocuments() {
   try {
-    const url = currentUser
-      ? `${API}/api/documents/?user_id=${currentUser.id}`
-      : `${API}/api/documents/`;
-    const res  = await fetch(url);
+    const res  = await fetch(`${API}/api/documents/`);
     const data = await res.json();
     const list = document.getElementById('docs-list');
     const docs = data.documents || data;
-    if (!docs.length) {
+
+    // Build maps for quick lookup by Sources click
+    window._docsById = {};
+    window._docIdByFilename = {};
+    (docs || []).forEach(d => {
+      window._docsById[d.id] = d;
+      if (d.filename) window._docIdByFilename[d.filename] = d.id;
+    });
+
+    if (!docs?.length) {
       list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
       return;
     }
+
     list.innerHTML = docs.map(doc => `
       <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
         <span class="doc-icon">📄</span>
@@ -1078,12 +1107,16 @@ async function loadDocuments() {
         <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
       </div>`
     ).join('');
-  } catch(e) { console.warn('Could not load documents', e); }
+  } catch(e) {
+    console.warn('Could not load documents', e);
+  }
 }
-async function previewDoc(docId, filename) {
+
+a// Preview as segmented chunk cards + highlight the matched chunk
+async function previewDoc(docId, filename, opts = {}) {
   try {
-    // fetch segmented chunks
-    const res = await fetch(`${API}/api/documents/${docId}?limit=200&max_chars=60000`);
+    const limit = 200;
+    const res = await fetch(`${API}/api/documents/${docId}?limit=${limit}`);
     const data = await res.json();
 
     if (!res.ok) {
@@ -1092,66 +1125,42 @@ async function previewDoc(docId, filename) {
     }
 
     const chunks = data.chunks || [];
-    if (!chunks.length) {
-      openDocModal(filename, `<div style="color:var(--text-muted)">No chunks found for this document yet.</div>`);
-      return;
-    }
+    const needle = opts.needle || "";
+    const chunkOrder = (opts.chunkOrder !== null && opts.chunkOrder !== undefined) ? Number(opts.chunkOrder) : null;
 
-    const needle = activeSource?.content || activeSource?.snippet || "";
-    const needleShort = needle ? needle.slice(0, 400) : "";
-
-    // Find best matching chunk (simple containment check)
-    let matchOrder = null;
-    if (needleShort && needleShort.length >= 20) {
-      const needleLower = needleShort.toLowerCase();
-      for (const c of chunks) {
-        const txt = (c.content || "").toLowerCase();
-        if (txt.includes(needleLower)) {
-          matchOrder = c.chunk_order;
-          break;
-        }
-      }
-    }
-
-    const header = `
+    const tip = `
       <div style="color:var(--text-muted); margin-bottom:10px;">
-        ${needleShort
-          ? (matchOrder != null
-              ? `Highlighting the matching chunk (Chunk ${matchOrder}).`
-              : `Source selected, but no exact matching chunk found in this document.`)
-          : `Tip: click a Source on the right first, then open a document to auto-highlight the matching chunk.`}
+        ${chunkOrder !== null
+          ? `Highlighting retrieved chunk <b>#${chunkOrder}</b>…`
+          : (needle ? "Highlighting last selected source…" : "Tip: click a source to auto-open and highlight its chunk.")
+        }
       </div>
     `;
 
-    const body = chunks.map(c => {
-      const isHit = (matchOrder != null && c.chunk_order === matchOrder);
-      const content = c.content || "";
-
-      // If this is the matching chunk, highlight the exact needle inside it
-      const rendered = (isHit && needleShort)
-        ? highlightText(content, needleShort)
-        : escapeHtml(content);
+    const cards = chunks.map(c => {
+      const isHit =
+        (chunkOrder !== null && c.chunk_order === chunkOrder) ||
+        (chunkOrder === null && needle && (c.content || "").includes(needle));
 
       return `
-        <div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk-order="${c.chunk_order}">
-          <div class="chunk-meta">
-            <span>Chunk ${c.chunk_order}</span>
-            <span>${c.len || content.length} chars</span>
+        <div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk="${c.chunk_order}"
+             style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--bg-input);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="font-weight:600; color:var(--accent);">Chunk ${c.chunk_order}</div>
+            <div style="font-size:11px; color:var(--text-muted);">${c.len || (c.content||'').length} chars</div>
           </div>
-          <pre>${rendered}</pre>
+          <div style="white-space:pre-wrap;">${escapeHtml(c.content || "")}</div>
         </div>
       `;
     }).join('');
 
-    openDocModal(filename, DOMPurify.sanitize(header + body));
+    openDocModal(filename, tip + cards);
 
-    // Scroll to the highlighted chunk
+    // Auto-scroll to highlighted chunk
     setTimeout(() => {
-      if (matchOrder != null) {
-        const el = document.querySelector(`#doc-modal-body .chunk-card[data-chunk-order="${matchOrder}"]`);
-        if (el) el.scrollIntoView({ block: 'center' });
-      }
-    }, 50);
+      const target = document.querySelector('#doc-modal-body .chunk-card.highlight');
+      if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 60);
 
   } catch {
     openDocModal(filename, `<div style="color:var(--text-muted)">Backend unreachable.</div>`);

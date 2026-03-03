@@ -13,22 +13,19 @@ documents_bp = Blueprint("documents", __name__)
 @documents_bp.route("/", methods=["GET"])
 def get_documents():
     user_id = request.args.get("user_id", type=int)
+
     with get_db_session() as session:
         query = session.query(Document)
         if user_id is not None:
             query = query.filter_by(user_id=user_id)
+
         docs = query.order_by(Document.upload_date.desc()).all()
         return jsonify({"documents": [d.to_dict() for d in docs]}), 200
 
 
-# ── POST /api/documents/upload ─────────────────────────────
+# ── POST /api/documents/upload ─────────────────────
 @documents_bp.route("/upload", methods=["POST"])
 def upload_document():
-    """
-    Accept a file upload, save it to UPLOAD_FOLDER,
-    then run the ingestion pipeline:
-    Load → Split → Embed → Store (Document + DocumentChunk).
-    """
     if "file" not in request.files:
         return jsonify({"error": "No file part in request"}), 400
 
@@ -46,6 +43,7 @@ def upload_document():
     filename = secure_filename(file.filename)
     upload_dir = Config.UPLOAD_FOLDER
     os.makedirs(upload_dir, exist_ok=True)
+
     file_path = os.path.join(upload_dir, filename)
     file.save(file_path)
     current_app.logger.info(f"Saved upload to {file_path}")
@@ -62,6 +60,7 @@ def upload_document():
                 "message": "Document uploaded and ingested successfully.",
                 "document": doc.to_dict(),
             }), 201
+
     except ValueError as e:
         current_app.logger.error(f"Ingestion error for {filename}: {e}")
         return jsonify({"error": str(e)}), 400
@@ -70,25 +69,17 @@ def upload_document():
         return jsonify({"error": "Ingestion failed. See server logs."}), 500
 
 
-# ── GET/DELETE /api/documents/<id> ─────────────────────────────
+# ── GET/DELETE /api/documents/<id> ──────────────────
 @documents_bp.route("/<int:doc_id>", methods=["GET", "DELETE"])
 def get_or_delete_document(doc_id: int):
-    """
-    GET:
-      Return segmented chunks for preview (NOT one combined blob),
-      so frontend can render per-chunk and highlight the retrieved source chunk.
-    DELETE:
-      Delete document + chunks + underlying file
-    """
     with get_db_session() as session:
         doc = session.query(Document).filter_by(id=doc_id).first()
         if not doc:
             return jsonify({"error": f"Document {doc_id} not found"}), 404
 
-        # ---------- GET (segmented preview) ----------
+        # ---------- GET (return segmented chunks) ----------
         if request.method == "GET":
-            limit = request.args.get("limit", default=200, type=int)          # how many chunks to return
-            max_total_chars = request.args.get("max_chars", default=50000, type=int)  # safety cap
+            limit = request.args.get("limit", default=200, type=int)
 
             chunks = (
                 session.query(DocumentChunk)
@@ -98,45 +89,30 @@ def get_or_delete_document(doc_id: int):
                 .all()
             )
 
-            out_chunks = []
-            total = 0
-            for c in chunks:
-                content = c.content or ""
-                if not content:
-                    continue
-
-                remaining = max_total_chars - total
-                if remaining <= 0:
-                    break
-
-                # trim chunk if it would exceed cap
-                trimmed = content[:remaining]
-                total += len(trimmed)
-
-                out_chunks.append({
-                    "chunk_order": c.chunk_order,
-                    "len": len(trimmed),
-                    "preview": trimmed[:180],
-                    "content": trimmed,
-                    "metadata": c.chunk_metadata,
-                })
-
             return jsonify({
                 "id": doc.id,
                 "filename": doc.filename,
                 "file_type": doc.file_type,
                 "subject": doc.subject,
                 "upload_date": doc.upload_date.isoformat() if doc.upload_date else None,
-                "count": len(out_chunks),
-                "chunks": out_chunks,
+                "count": len(chunks),
+                "chunks": [
+                    {
+                        "chunk_order": c.chunk_order,
+                        "content": c.content or "",
+                        "len": len(c.content or ""),
+                        "metadata": c.chunk_metadata,
+                    }
+                    for c in chunks
+                ]
             }), 200
 
         # ---------- DELETE ----------
         file_path = doc.file_path
         session.query(DocumentChunk).filter_by(document_id=doc_id).delete()
         session.delete(doc)
+        # commit handled by get_db_session context manager
 
-    # Remove file from disk after DB commit
     if file_path and os.path.exists(file_path):
         try:
             os.remove(file_path)
@@ -146,7 +122,7 @@ def get_or_delete_document(doc_id: int):
     return jsonify({"message": f"Document {doc_id} and its chunks deleted."}), 200
 
 
-# ── GET /api/documents/<id>/chunks (debug/inspection) ───────────
+# ── GET /api/documents/<id>/chunks (optional inspector endpoint) ──
 @documents_bp.route("/<int:doc_id>/chunks", methods=["GET"])
 def get_document_chunks(doc_id: int):
     limit = request.args.get("limit", default=50, type=int)
@@ -168,7 +144,7 @@ def get_document_chunks(doc_id: int):
                     "chunk_order": c.chunk_order,
                     "len": len(c.content or ""),
                     "preview": (c.content or "")[:160],
-                    "content": c.content,
+                    "content": c.content or "",
                     "metadata": c.chunk_metadata,
                 }
                 for c in chunks
