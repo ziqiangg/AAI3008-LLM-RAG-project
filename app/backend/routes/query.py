@@ -198,18 +198,21 @@ def ask_question():
                 )
                 db.add(user_msg)
                 
-                # Store assistant message with sources
+                # Store assistant message with full source data for display
                 assistant_msg = Message(
                     session_id=session_id,
                     role='assistant',
                     content=answer,
-                    sources={'chunks': [{'chunk_id': s['chunk_id'], 'document_id': s['document_id']} for s in sources]}
+                    sources={'chunks': sources}  # Store full source data including content and filename
                 )
                 db.add(assistant_msg)
                 
-                # Auto-generate session title from first question
-                if session and session.title == 'New Chat' and len(conversation_history) == 0:
-                    session.title = question[:60] + ('...' if len(question) > 60 else '')
+                # Auto-generate session title from first question only
+                if session and session.title == 'New Chat':
+                    # Check if this is the first user message in the session
+                    message_count = db.query(Message).filter_by(session_id=session_id).count()
+                    if message_count == 0:  # No previous messages, this is the first
+                        session.title = question[:60] + ('...' if len(question) > 60 else '')
                 
                 db.commit()
                 logger.info(f"[Query] Messages stored in session {session_id}")

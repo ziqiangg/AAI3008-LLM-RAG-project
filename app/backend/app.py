@@ -39,8 +39,14 @@ def create_app(config_name=None):
         return send_from_directory(
             os.path.join(os.path.dirname(__file__), '../frontend'),
             'index.html'
+        )    
+    # Serve static files from frontend folder
+    @app.route('/<path:filename>')
+    def serve_static(filename):
+        return send_from_directory(
+            os.path.join(os.path.dirname(__file__), '../frontend'),
+            filename
         )
-
     # ── Health Check ──────────────────────────────────────────────
     @app.route('/api/health')
     def health():

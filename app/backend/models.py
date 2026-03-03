@@ -97,6 +97,7 @@ class Session(Base):
         return {
             'id': self.id,
             'user_id': self.user_id,
+            'title': self.title,
             'document_ids': self.document_ids,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_accessed': self.last_accessed.isoformat() if self.last_accessed else None

@@ -108,9 +108,7 @@ def add_message(session_id):
         )
         db.add(msg)
         s.last_accessed = datetime.utcnow()
-        # Auto-title from first user message
-        if role == 'user' and s.title == 'New Chat':
-            s.title = content[:60] + ('…' if len(content) > 60 else '')
+        # Auto-title logic removed - handled by query endpoint to avoid race condition
         db.commit()
         return jsonify({'message': msg.to_dict()}), 201
 
