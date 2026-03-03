@@ -9,7 +9,7 @@ from app.backend.services.injestion import run_ingestion_pipeline  # adjust path
 
 documents_bp = Blueprint("documents", __name__)
 
-# ── Existing GET /api/documents/ route (leave as you have it) ──
+# ── GET /api/documents/ ─────────────────────────────
 @documents_bp.route("/", methods=["GET"])
 def get_documents():
     user_id = request.args.get("user_id", type=int)
@@ -21,12 +21,12 @@ def get_documents():
         return jsonify({"documents": [d.to_dict() for d in docs]}), 200
 
 
-# ── NEW: POST /api/documents/upload ─────────────────────────────
+# ── POST /api/documents/upload ─────────────────────────────
 @documents_bp.route("/upload", methods=["POST"])
 def upload_document():
     """
     Accept a file upload, save it to UPLOAD_FOLDER,
-    then run the LangChain ingestion pipeline:
+    then run the ingestion pipeline:
     Load → Split → Embed → Store (Document + DocumentChunk).
     """
     if "file" not in request.files:
@@ -38,14 +38,11 @@ def upload_document():
 
     ext = file.filename.rsplit(".", 1)[-1].lower()
     if ext not in Config.ALLOWED_EXTENSIONS:
-        return jsonify({
-            "error": f"File type not allowed. Supported types: {Config.ALLOWED_EXTENSIONS}"
-        }), 415
+        return jsonify({"error": f"File type not allowed. Supported types: {Config.ALLOWED_EXTENSIONS}"}), 415
 
     subject = request.form.get("subject", "General")
     user_id = request.form.get("user_id", type=int)
 
-    # Save file to disk
     filename = secure_filename(file.filename)
     upload_dir = Config.UPLOAD_FOLDER
     os.makedirs(upload_dir, exist_ok=True)
@@ -61,7 +58,6 @@ def upload_document():
                 user_id=user_id,
                 subject=subject,
             )
-            # run_ingestion_pipeline commits internally; we just return the doc
             return jsonify({
                 "message": "Document uploaded and ingested successfully.",
                 "document": doc.to_dict(),
@@ -73,24 +69,72 @@ def upload_document():
         current_app.logger.error(f"Ingestion error for {filename}: {e}")
         return jsonify({"error": "Ingestion failed. See server logs."}), 500
 
-# ── DELETE /api/documents/<id> ─────────────────────────────
-@documents_bp.route("/<int:doc_id>", methods=["DELETE"])
-def delete_document(doc_id: int):
+
+# ── GET/DELETE /api/documents/<id> ─────────────────────────────
+@documents_bp.route("/<int:doc_id>", methods=["GET", "DELETE"])
+def get_or_delete_document(doc_id: int):
     """
-    Delete a document and its chunks, and remove the underlying file.
+    GET:
+      Return segmented chunks for preview (NOT one combined blob),
+      so frontend can render per-chunk and highlight the retrieved source chunk.
+    DELETE:
+      Delete document + chunks + underlying file
     """
     with get_db_session() as session:
         doc = session.query(Document).filter_by(id=doc_id).first()
         if not doc:
             return jsonify({"error": f"Document {doc_id} not found"}), 404
 
+        # ---------- GET (segmented preview) ----------
+        if request.method == "GET":
+            limit = request.args.get("limit", default=200, type=int)          # how many chunks to return
+            max_total_chars = request.args.get("max_chars", default=50000, type=int)  # safety cap
+
+            chunks = (
+                session.query(DocumentChunk)
+                .filter_by(document_id=doc_id)
+                .order_by(DocumentChunk.chunk_order.asc())
+                .limit(limit)
+                .all()
+            )
+
+            out_chunks = []
+            total = 0
+            for c in chunks:
+                content = c.content or ""
+                if not content:
+                    continue
+
+                remaining = max_total_chars - total
+                if remaining <= 0:
+                    break
+
+                # trim chunk if it would exceed cap
+                trimmed = content[:remaining]
+                total += len(trimmed)
+
+                out_chunks.append({
+                    "chunk_order": c.chunk_order,
+                    "len": len(trimmed),
+                    "preview": trimmed[:180],
+                    "content": trimmed,
+                    "metadata": c.chunk_metadata,
+                })
+
+            return jsonify({
+                "id": doc.id,
+                "filename": doc.filename,
+                "file_type": doc.file_type,
+                "subject": doc.subject,
+                "upload_date": doc.upload_date.isoformat() if doc.upload_date else None,
+                "count": len(out_chunks),
+                "chunks": out_chunks,
+            }), 200
+
+        # ---------- DELETE ----------
         file_path = doc.file_path
-
-        # If you don't have ON DELETE CASCADE on FK, explicitly delete chunks:
         session.query(DocumentChunk).filter_by(document_id=doc_id).delete()
-
         session.delete(doc)
-        # session.commit() is handled by get_db_session context manager
 
     # Remove file from disk after DB commit
     if file_path and os.path.exists(file_path):
@@ -100,3 +144,33 @@ def delete_document(doc_id: int):
             current_app.logger.warning(f"Failed to delete file {file_path}")
 
     return jsonify({"message": f"Document {doc_id} and its chunks deleted."}), 200
+
+
+# ── GET /api/documents/<id>/chunks (debug/inspection) ───────────
+@documents_bp.route("/<int:doc_id>/chunks", methods=["GET"])
+def get_document_chunks(doc_id: int):
+    limit = request.args.get("limit", default=50, type=int)
+
+    with get_db_session() as session:
+        chunks = (
+            session.query(DocumentChunk)
+            .filter_by(document_id=doc_id)
+            .order_by(DocumentChunk.chunk_order.asc())
+            .limit(limit)
+            .all()
+        )
+
+        return jsonify({
+            "document_id": doc_id,
+            "count": len(chunks),
+            "chunks": [
+                {
+                    "chunk_order": c.chunk_order,
+                    "len": len(c.content or ""),
+                    "preview": (c.content or "")[:160],
+                    "content": c.content,
+                    "metadata": c.chunk_metadata,
+                }
+                for c in chunks
+            ]
+        }), 200

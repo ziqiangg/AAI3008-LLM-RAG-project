@@ -22,3 +22,4 @@ PyJWT==2.8.0
 Werkzeug==3.0.6
 langchain-huggingface==0.0.3
 pdfplumber==0.7.0
+python-pptx
