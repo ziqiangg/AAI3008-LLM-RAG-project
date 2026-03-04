@@ -1,17 +1,19 @@
 # app/backend/services/ingestion.py
-
 import os
-from typing import Optional
+import re
+from typing import List, Optional, Dict, Any
+from collections import defaultdict
 
+from langchain_core.documents import Document as LCDocument
 from langchain_community.document_loaders import (
     PDFPlumberLoader,
     Docx2txtLoader,
     TextLoader,
-    UnstructuredPowerPointLoader,
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from sqlalchemy.orm import Session as DBSession
+from pptx import Presentation
 
 from app.backend.config import Config
 from app.backend.models import Document, DocumentChunk
@@ -19,101 +21,630 @@ from app.backend.models import Document, DocumentChunk
 # ── Singleton: model loaded once at startup ───────────────────────────────
 _embeddings: Optional[HuggingFaceEmbeddings] = None
 
+
 def get_embeddings() -> HuggingFaceEmbeddings:
     """Lazy-load the HuggingFace embedding model once."""
     global _embeddings
     if _embeddings is None:
         _embeddings = HuggingFaceEmbeddings(
-            model_name=Config.EMBEDDING_MODEL,          # from .env / config
+            model_name=Config.EMBEDDING_MODEL,
             model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
     return _embeddings
 
 
-# ── Step 1: Load ──────────────────────────────────────────────────────────
-def load_document(file_path: str):
+# ──────────────────────────────────────────────────────────────────────────
+# Semantic chunking helpers
+# ──────────────────────────────────────────────────────────────────────────
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_MULTI_NL_RE = re.compile(r"\n{2,}")
+
+
+def _looks_like_bullets(text: str) -> bool:
+    """Detect bullet-heavy text (common in slides)."""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if len(lines) < 5:
+        return False
+    bulletish = 0
+    for ln in lines:
+        if ln.startswith(("•", "·", "-", "–", "—", "*")):
+            bulletish += 1
+        # numbered bullets
+        if re.match(r"^\d+[\).\]]\s+", ln):
+            bulletish += 1
+    return bulletish / max(len(lines), 1) >= 0.35
+
+
+def _split_into_units(text: str, max_unit_chars: int = 600) -> List[str]:
     """
-    Select the appropriate LangChain loader based on file extension.
-    Supports pdf, docx, txt, pptx (from Config.ALLOWED_EXTENSIONS).
+    Split text into "semantic-ish" units (bullets/paragraphs, then sentences).
+    Units should be reasonably sized for efficient embedding.
+    Increased from 400 to 600 chars for better performance.
     """
+    if not text:
+        return []
+
+    text = text.strip()
+
+    # If it's bullet-heavy, treat each non-empty line as a unit, then pack.
+    if _looks_like_bullets(text):
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        units: List[str] = []
+        buf: List[str] = []
+        buf_len = 0
+        for ln in lines:
+            if buf_len + len(ln) + 1 > max_unit_chars and buf:
+                units.append(" ".join(buf).strip())
+                buf, buf_len = [], 0
+            buf.append(ln)
+            buf_len += len(ln) + 1
+        if buf:
+            units.append(" ".join(buf).strip())
+        return units
+
+    # Otherwise: paragraph first
+    paras = [p.strip() for p in _MULTI_NL_RE.split(text) if p.strip()]
+    units: List[str] = []
+
+    for p in paras:
+        if len(p) <= max_unit_chars:
+            units.append(p)
+            continue
+
+        # Split into sentences and pack
+        sents = [s.strip() for s in _SENTENCE_SPLIT_RE.split(p) if s.strip()]
+        buf: List[str] = []
+        buf_len = 0
+        for s in sents:
+            if buf_len + len(s) + 1 > max_unit_chars and buf:
+                units.append(" ".join(buf).strip())
+                buf, buf_len = [], 0
+            buf.append(s)
+            buf_len += len(s) + 1
+        if buf:
+            units.append(" ".join(buf).strip())
+
+    return units
+
+
+def _semantic_chunk_single_doc(
+    doc: LCDocument,
+    *,
+    max_chunk_chars: int = 1400,
+    min_chunk_chars: int = 250,
+    similarity_threshold: float = 0.55,
+    debug: bool = False,
+) -> List[LCDocument]:
+    """
+    Semantic chunking:
+    - Split doc into units (bullets/paragraph/sentence packs)
+    - Embed each unit (normalized embeddings already)
+    - Start a new chunk when adjacent similarity drops below threshold
+    - Also respect max_chunk_chars to avoid overly large chunks
+    """
+    text = (doc.page_content or "").strip()
+    if not text:
+        return []
+
+    units = _split_into_units(text)
+    if len(units) <= 1:
+        return [doc]
+
+    vectors = get_embeddings().embed_documents(units)
+
+    # Cosine similarity = dot product since vectors normalized
+    def dot(a, b) -> float:
+        return sum(x * y for x, y in zip(a, b))
+
+    chunks: List[LCDocument] = []
+    cur_units = [units[0]]
+    cur_len = len(units[0])
+
+    for i in range(1, len(units)):
+        sim = dot(vectors[i - 1], vectors[i])
+
+        # break if topic shift OR chunk too big
+        should_break = (sim < similarity_threshold) or (cur_len + len(units[i]) + 1 > max_chunk_chars)
+
+        if should_break and cur_len >= min_chunk_chars:
+            if debug:
+                print(f"[semantic split] sim={sim:.2f} break at unit {i-1}->{i} meta={doc.metadata}")
+            chunks.append(
+                LCDocument(
+                    page_content="\n\n".join(cur_units).strip(),
+                    metadata=dict(doc.metadata or {}),
+                )
+            )
+            cur_units = [units[i]]
+            cur_len = len(units[i])
+        else:
+            cur_units.append(units[i])
+            cur_len += len(units[i]) + 1
+
+    if cur_units:
+        chunks.append(
+            LCDocument(
+                page_content="\n\n".join(cur_units).strip(),
+                metadata=dict(doc.metadata or {}),
+            )
+        )
+
+    return chunks
+
+
+def semantic_chunk_documents(
+    lc_docs: List[LCDocument],
+    *,
+    max_chunk_chars: int = 1400,
+    min_chunk_chars: int = 250,
+    similarity_threshold: float = 0.55,
+    debug: bool = False,
+) -> List[LCDocument]:
+    """Apply semantic chunking across a list of docs, preserving metadata."""
+    all_chunks: List[LCDocument] = []
+    for d in lc_docs:
+        all_chunks.extend(
+            _semantic_chunk_single_doc(
+                d,
+                max_chunk_chars=max_chunk_chars,
+                min_chunk_chars=min_chunk_chars,
+                similarity_threshold=similarity_threshold,
+                debug=debug,
+            )
+        )
+    return all_chunks
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Loading
+# ──────────────────────────────────────────────────────────────────────────
+
+def _load_pptx_with_python_pptx(file_path: str) -> List[LCDocument]:
+    """Load PPTX using python-pptx library directly (no API calls)."""
+    try:
+        prs = Presentation(file_path)
+        docs = []
+        
+        for slide_idx, slide in enumerate(prs.slides, start=1):
+            slide_text_parts = []
+            
+            # Extract text from all shapes
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text:
+                    slide_text_parts.append(shape.text.strip())
+            
+            # Combine all text for this slide
+            slide_text = "\n".join(slide_text_parts).strip()
+            
+            if slide_text:  # Only add non-empty slides
+                docs.append(
+                    LCDocument(
+                        page_content=slide_text,
+                        metadata={
+                            "source": file_path,
+                            "slide_number": slide_idx,
+                            "total_slides": len(prs.slides),
+                        }
+                    )
+                )
+        
+        return docs if docs else [LCDocument(page_content="", metadata={"source": file_path})]
+    except Exception as e:
+        raise ValueError(f"PPTX loading failed: {e}")
+
+def load_document(file_path: str) -> List[LCDocument]:
     ext = os.path.splitext(file_path)[1].lower()
+
+    if ext == ".pptx":
+        return _load_pptx_with_python_pptx(file_path)
+
     loader_map = {
-        ".pdf":  PDFPlumberLoader,
+        ".pdf": PDFPlumberLoader,
         ".docx": Docx2txtLoader,
-        ".txt":  TextLoader,
-        ".pptx": UnstructuredPowerPointLoader,
+        ".txt": TextLoader,
     }
+
     loader_cls = loader_map.get(ext)
     if not loader_cls:
         raise ValueError(
-            f"Unsupported file extension '{ext}'. "
-            f"Allowed: {Config.ALLOWED_EXTENSIONS}"
+            f"Unsupported file extension '{ext}'. Allowed: {Config.ALLOWED_EXTENSIONS}"
         )
-    return loader_cls(file_path).load()   # returns List[LangChain Document]
+
+    return loader_cls(file_path).load()
 
 
-# ── Step 2: Chunk ─────────────────────────────────────────────────────────
-def split_documents(lc_docs) -> list:
-    """
-    Split LangChain Documents using RecursiveCharacterTextSplitter.
-    chunk_size and chunk_overlap are read from Config (sourced from .env).
-    """
+# ──────────────────────────────────────────────────────────────────────────
+# Fallback chunking (recursive)
+# ──────────────────────────────────────────────────────────────────────────
+
+def _split_with_recursive(
+    docs: List[LCDocument],
+    *,
+    chunk_size: int,
+    chunk_overlap: int,
+    separators=None
+) -> List[LCDocument]:
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=Config.CHUNK_SIZE,           # .env: CHUNK_SIZE
-        chunk_overlap=Config.CHUNK_OVERLAP,     # .env: CHUNK_OVERLAP
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
         length_function=len,
-        separators=["\n\n", "\n", ". ", " ", ""],
+        separators=separators or ["\n\n", "\n", ". ", " ", ""],
     )
-    return splitter.split_documents(lc_docs)
+    return splitter.split_documents(docs)
 
 
-# ── Step 3: Embed ─────────────────────────────────────────────────────────
-def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Embed a list of strings using the singleton HuggingFace model."""
+# ──────────────────────────────────────────────────────────────────────────
+# PPTX: merge loader elements into one doc per slide
+# ──────────────────────────────────────────────────────────────────────────
+
+def _pptx_docs_by_slide(lc_docs: List[LCDocument]) -> List[LCDocument]:
+    """
+    Merge multiple document elements into one doc per slide.
+    Now mainly used if we switch back to UnstructuredPowerPointLoader.
+    With python-pptx loader, docs are already slide-based.
+    """
+    # If already slide-based (from python-pptx), just return
+    if all(d.metadata.get("slide_number") for d in lc_docs if d.metadata):
+        return lc_docs
+    
+    slides: Dict[int, List[str]] = defaultdict(list)
+    slide_meta: Dict[int, Dict[str, Any]] = {}
+
+    for d in lc_docs:
+        md = d.metadata or {}
+        slide_no = (
+            md.get("page_number")
+            or md.get("slide_number")
+            or md.get("page")
+            or md.get("slide")
+            or 1
+        )
+        slide_no = int(slide_no)
+
+        txt = (d.page_content or "").strip()
+        if txt:
+            slides[slide_no].append(txt)
+
+        # keep first seen metadata as base, then update with any missing keys
+        if slide_no not in slide_meta:
+            slide_meta[slide_no] = dict(md)
+        else:
+            for k, v in md.items():
+                if k not in slide_meta[slide_no]:
+                    slide_meta[slide_no][k] = v
+
+    merged: List[LCDocument] = []
+    for slide_no in sorted(slides.keys()):
+        slide_text = "\n".join(slides[slide_no]).strip()
+        if not slide_text:
+            continue
+        md = dict(slide_meta.get(slide_no, {}))
+        md["slide_number"] = slide_no
+        merged.append(LCDocument(page_content=slide_text, metadata=md))
+
+    return merged
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# PDF: merge slide-like pages into windows so semantic chunking has context
+# ──────────────────────────────────────────────────────────────────────────
+
+def _is_slide_like_pdf(lc_docs: List[LCDocument]) -> bool:
+    """
+    Heuristic: slide PDFs have short pages with few punctuation marks.
+    """
+    if not lc_docs:
+        return False
+
+    samples = lc_docs[: min(len(lc_docs), 12)]
+    lengths = [len((d.page_content or "").strip()) for d in samples]
+    avg_len = sum(lengths) / max(len(lengths), 1)
+
+    punct = 0
+    chars = 0
+    for d in samples:
+        t = (d.page_content or "")
+        punct += sum(t.count(x) for x in [".", "!", "?", ";", ":"])
+        chars += len(t)
+
+    punct_rate = punct / max(chars, 1)
+
+    # Typical: avg page small and punctuation sparse
+    return (avg_len < 700) and (punct_rate < 0.01)
+
+
+def _merge_pdf_pages(lc_docs: List[LCDocument], window_pages: int = 3) -> List[LCDocument]:
+    """
+    Merge every N pages into one doc, keeping start/end page metadata.
+    """
+    merged: List[LCDocument] = []
+    buf: List[str] = []
+    md_acc: Dict[str, Any] = {}
+    start_page = None
+    end_page = None
+
+    def flush():
+        nonlocal buf, md_acc, start_page, end_page
+        if not buf:
+            return
+        md_out = dict(md_acc)
+        if start_page is not None:
+            md_out["start_page"] = start_page
+        if end_page is not None:
+            md_out["end_page"] = end_page
+        merged.append(LCDocument(page_content="\n\n".join(buf).strip(), metadata=md_out))
+        buf, md_acc, start_page, end_page = [], {}, None, None
+
+    for i, d in enumerate(lc_docs):
+        t = (d.page_content or "").strip()
+        md = d.metadata or {}
+
+        p = md.get("page")
+        if start_page is None and p is not None:
+            start_page = p
+        if p is not None:
+            end_page = p
+
+        if not md_acc:
+            md_acc = dict(md)
+        else:
+            # keep base, fill missing keys only
+            for k, v in md.items():
+                if k not in md_acc:
+                    md_acc[k] = v
+
+        if t:
+            buf.append(t)
+
+        if (i + 1) % window_pages == 0:
+            flush()
+
+    flush()
+    return merged
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Cleaning
+# ──────────────────────────────────────────────────────────────────────────
+
+def clean_slide_text(text: str) -> str:
+    if not text:
+        return ""
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    cleaned = []
+    for ln in lines:
+        low = ln.strip().lower()
+        if low in {"sit internal"}:
+            continue
+        cleaned.append(ln)
+
+    out = "\n".join([ln for ln in cleaned if ln.strip() != ""]).strip()
+    return out
+
+
+def _dedouble_word_if_encoded(word: str) -> str:
+    """
+    Fix OCR/PDF extraction artifacts like:
+      'CClloouudd' -> 'Cloud'
+    WITHOUT breaking normal words like:
+      'access' (should remain 'access', not 'aces')
+    Strategy:
+      If the word is even-length and mostly made of repeated pairs (aa bb cc ...),
+      collapse pairs.
+    """
+    if not word:
+        return word
+    if len(word) < 6 or len(word) % 2 != 0:
+        return word
+
+    # Check pair structure
+    pairs = [(word[i], word[i + 1]) for i in range(0, len(word), 2)]
+    same_pairs = sum(1 for a, b in pairs if a == b)
+    ratio = same_pairs / max(len(pairs), 1)
+
+    # Only collapse if *most* pairs are duplicated
+    if ratio >= 0.8:
+        return "".join(a for a, _ in pairs)
+
+    return word
+
+
+def clean_pdf_extraction_noise(text: str) -> str:
+    if not text:
+        return ""
+
+    # 1) Fix "doubled-letter words" safely (token-wise)
+    def fix_token(tok: str) -> str:
+        # split punctuation from word-ish core
+        m = re.match(r"^(\W*)([A-Za-z]{6,})(\W*)$", tok)
+        if not m:
+            return tok
+        pre, core, post = m.group(1), m.group(2), m.group(3)
+        core2 = _dedouble_word_if_encoded(core)
+        return f"{pre}{core2}{post}"
+
+    tokens = re.split(r"(\s+)", text)  # keep whitespace
+    tokens = [fix_token(t) if not t.isspace() else t for t in tokens]
+    text = "".join(tokens)
+
+    # 2) Fix spaced letters lines like "I P S" or "n l o"
+    fixed_lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if re.fullmatch(r"(?:[A-Za-z]\s+){2,}[A-Za-z]", stripped):
+            fixed_lines.append(stripped.replace(" ", ""))
+        else:
+            fixed_lines.append(line)
+    text = "\n".join(fixed_lines)
+
+    # 3) Merge broken line wraps (common in PDFs)
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    merged = []
+    i = 0
+    while i < len(lines):
+        cur = lines[i].strip()
+        if not cur:
+            i += 1
+            continue
+        if i + 1 < len(lines):
+            nxt = lines[i + 1].strip()
+            if cur and nxt and (not re.search(r"[.!?:;]$", cur)) and re.match(r"^[a-z]", nxt):
+                merged.append(cur + " " + nxt)
+                i += 2
+                continue
+        merged.append(cur)
+        i += 1
+
+    return "\n".join(merged).strip()
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Type-aware splitting
+# ──────────────────────────────────────────────────────────────────────────
+
+def split_documents_by_type(lc_docs: List[LCDocument], file_ext: str) -> List[LCDocument]:
+    """
+    Adaptive chunking: Use semantic chunking for smaller/medium docs,
+    fall back to fast recursive chunking for very large documents.
+    """
+    ext = f".{file_ext.lower().lstrip('.')}"
+    
+    # Calculate total document size
+    total_chars = sum(len(d.page_content or "") for d in lc_docs)
+    
+    # Performance threshold: if document is too large, use simpler chunking
+    LARGE_DOC_THRESHOLD = 150000  # ~150KB of text
+    use_fast_chunking = total_chars > LARGE_DOC_THRESHOLD
+    
+    if use_fast_chunking:
+        print(f"     ℹ️  Large document ({total_chars} chars), using fast recursive chunking")
+        return _split_with_recursive(
+            lc_docs,
+            chunk_size=1000,
+            chunk_overlap=100,
+        )
+    
+    # --- PPTX (already slide-based, usually small) ---
+    if ext == ".pptx":
+        # No need to merge slides, already loaded per-slide
+        return semantic_chunk_documents(
+            lc_docs,
+            max_chunk_chars=1200,  # Reduced for faster embedding
+            min_chunk_chars=200,
+            similarity_threshold=0.58,  # Slightly higher = fewer chunks
+            debug=False,
+        )
+
+    # --- PDF ---
+    if ext == ".pdf":
+        # If it's a slide-like PDF, merge pages into windows first
+        if _is_slide_like_pdf(lc_docs):
+            merged_docs = _merge_pdf_pages(lc_docs, window_pages=3)
+            return semantic_chunk_documents(
+                merged_docs,
+                max_chunk_chars=1400,
+                min_chunk_chars=250,
+                similarity_threshold=0.58,
+                debug=False,
+            )
+
+        # normal PDFs: semantic chunk per page
+        return semantic_chunk_documents(
+            lc_docs,
+            max_chunk_chars=1200,
+            min_chunk_chars=250,
+            similarity_threshold=0.58,
+            debug=False,
+        )
+
+    # --- DOCX ---
+    if ext == ".docx":
+        return semantic_chunk_documents(
+            lc_docs,
+            max_chunk_chars=1200,
+            min_chunk_chars=250,
+            similarity_threshold=0.58,
+            debug=False,
+        )
+
+    # --- TXT/default ---
+    return semantic_chunk_documents(
+        lc_docs,
+        max_chunk_chars=1000,
+        min_chunk_chars=200,
+        similarity_threshold=0.58,
+        debug=False,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Embedding
+# ──────────────────────────────────────────────────────────────────────────
+
+def embed_texts(texts: List[str]) -> List[List[float]]:
     return get_embeddings().embed_documents(texts)
 
 
-# ── Step 4: Store (preserves existing DocumentChunk schema) ───────────────
+# ──────────────────────────────────────────────────────────────────────────
+# Ingestion pipeline
+# ──────────────────────────────────────────────────────────────────────────
+
 def run_ingestion_pipeline(
     db_session: DBSession,
     file_path: str,
     user_id: Optional[int] = None,
     subject: Optional[str] = None,
 ) -> Document:
-    """
-    Full LangChain-powered ingestion pipeline:
-      Load → Split → Embed → Store into existing Document + DocumentChunk tables.
-
-    Args:
-        db_session: Active SQLAlchemy session (passed in from the blueprint).
-        file_path:  Absolute path to the saved file.
-        user_id:    ID of the uploading user (nullable until auth is wired).
-        subject:    Optional subject label (e.g. 'AAI3008').
-
-    Returns:
-        The created Document ORM instance.
-    """
     filename = os.path.basename(file_path)
     file_ext = os.path.splitext(filename)[1].lstrip(".")
 
     # ── 1. Load ──
     print(f"[1] Loading  : {filename}")
     lc_docs = load_document(file_path)
-    print(f"     → {len(lc_docs)} page(s) loaded")
+    print(f"     → {len(lc_docs)} page(s)/element-doc(s) loaded")
 
     # ── 2. Chunk ──
-    print(f"[2] Chunking : size={Config.CHUNK_SIZE}, overlap={Config.CHUNK_OVERLAP}")
-    chunks = split_documents(lc_docs)
-    print(f"     → {len(chunks)} chunks")
+    print("[2] Chunking : method=semantic_embedding")
+    chunks = split_documents_by_type(lc_docs, file_ext)
+    print(f"     → {len(chunks)} raw chunks")
+
+    # ── 2b. Clean + Filter (BEFORE EMBEDDING/STORING) ──
+    MIN_CHUNK_LEN = 140  # slightly higher: removes more junk
+    cleaned_chunks: List[LCDocument] = []
+
+    for c in chunks:
+        text = c.page_content or ""
+        text = clean_slide_text(text)
+        text = clean_pdf_extraction_noise(text)
+
+        text = text.strip()
+        if len(text) < MIN_CHUNK_LEN:
+            continue
+
+        c.page_content = text
+        cleaned_chunks.append(c)
+
+    chunks = cleaned_chunks
+    print(f"     → {len(chunks)} cleaned chunks kept")
+
+    if not chunks:
+        raise ValueError(
+            "No usable chunks after cleaning/filtering. "
+            "Try lowering MIN_CHUNK_LEN or check the document extraction quality."
+        )
 
     # ── 3. Embed ──
     print(f"[3] Embedding: {len(chunks)} chunks via {Config.EMBEDDING_MODEL}")
-    texts = [chunk.page_content for chunk in chunks]
+    texts = [c.page_content for c in chunks]
     vectors = embed_texts(texts)
+
+    if not vectors or not vectors[0]:
+        raise RuntimeError("Embedding failed: got empty vectors.")
     print(f"     → dim={len(vectors[0])}")
 
-    # ── 4. Create Document metadata row ──
+    # ── 4. Create Document row ──
     doc = Document(
         user_id=user_id,
         filename=filename,
@@ -121,30 +652,46 @@ def run_ingestion_pipeline(
         file_type=file_ext,
         title=filename,
         subject=subject or "General",
-        chunk_count=0,
+        chunk_count=len(chunks),
     )
     db_session.add(doc)
-    db_session.flush()      # get doc.id before inserting chunks
+    db_session.flush()
     print(f"[4] Document row created → id={doc.id}")
 
-    # ── 5. Insert DocumentChunk rows with vectors ──
-    for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
-        db_session.add(DocumentChunk(
-            document_id=doc.id,
-            chunk_order=idx,
-            content=chunk.page_content,
-            embedding=vector,                   # List[float] → Vector(384)
-            chunk_metadata={
-                "chunk_index": idx,
-                "total_chunks": len(chunks),
-                "chunk_size": Config.CHUNK_SIZE,
-                "chunk_overlap": Config.CHUNK_OVERLAP,
-                "source": chunk.metadata,       # LangChain page-level metadata
-            },
-        ))
+    # ── 5. Insert chunks ──
+    # Keep params in one place so metadata matches real behavior
+    semantic_params = {
+        "similarity_threshold": 0.55,
+        "max_chunk_chars": 1400,
+        "min_chunk_chars": 300 if file_ext.lower() in ["pdf", "docx"] else 250,
+    }
 
-    doc.chunk_count = len(chunks)
+    for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
+        db_session.add(
+            DocumentChunk(
+                document_id=doc.id,
+                chunk_order=idx,
+                content=chunk.page_content,
+                embedding=vector,
+                chunk_metadata={
+                    "chunk_index": idx,
+                    "total_chunks": len(chunks),
+                    "chunking_method": "semantic_embedding",
+                    "semantic_params": semantic_params,
+                    "source": chunk.metadata,
+                    "content_len": len(chunk.page_content or ""),
+                },
+            )
+        )
+
     db_session.commit()
     print(f"[5] Stored   : {len(chunks)} chunks → document_id={doc.id}")
-    print(f"✅  Ingestion complete.")
+    print("✅  Ingestion complete.")
+
+    # Preview first few chunks
+    for i, c in enumerate(chunks[:5]):
+        print(f"\n--- CHUNK {i} ---")
+        print(c.page_content[:1200])
+        print("LEN:", len(c.page_content))
+
     return doc

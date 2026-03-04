@@ -100,6 +100,38 @@
       font-size: 11px; color: var(--text-muted);
       text-align: center;
     }
+    .source-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.0);
+    }
+
+    /* Chunk cards inside doc modal */
+    .chunk-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    .chunk-card .chunk-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .chunk-card pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .chunk-card.highlight {
+      border-color: var(--accent);
+      background: rgba(16,163,127,0.08);
+    }
 
     /* ══════════════════════════════════════════
        CENTER MAIN AREA
@@ -179,7 +211,24 @@
     .avatar.bot  { background: var(--accent); }
     .message-body { flex: 1; }
     .message-role { font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
-    .message-text { font-size: 14px; line-height: 1.7; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }
+    .message-text { font-size: 14px; line-height: 1.7; color: var(--text-primary); white-space: pre-wrap; word-break: break-word; }/* User text: preserve newlines */
+    .message-text.plain {
+      white-space: pre-wrap;
+    }
+
+    /* Bot markdown: let HTML control spacing */
+    .message-text.md {
+      white-space: normal;
+    }
+    .message-text.md p { margin: 0.2em 0; }
+    .message-text.md h1, 
+    .message-text.md h2, 
+    .message-text.md h3,
+    .message-text.md h4,
+    .message-text.md h5,
+    .message-text.md h6 { margin: 0.5em 0 0.25em; }
+    .message-text.md ul, 
+    .message-text.md ol { margin: 0.3em 0; }
     .message-text.loading { color: var(--text-muted); font-style: italic; }
     .message-doc-badge {
       display: inline-flex; align-items: center; gap: 5px;
@@ -203,19 +252,6 @@
       transition: border-color 0.2s;
     }
     #input-box:focus-within { border-color: var(--accent); }
-    #file-preview {
-      display: none; align-items: center; gap: 8px;
-      background: var(--bg-main); border: 1px solid var(--border);
-      border-radius: 8px; padding: 6px 12px;
-      font-size: 12px; color: var(--text-muted);
-    }
-    #file-preview.visible { display: flex; }
-    #file-preview .file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
-    #remove-file {
-      background: none; border: none; cursor: pointer;
-      color: var(--text-muted); font-size: 16px; line-height: 1; padding: 0 2px;
-    }
-    #remove-file:hover { color: var(--danger); }
     .input-row { display: flex; align-items: flex-end; gap: 8px; }
     #query-input {
       flex: 1; background: transparent; border: none; outline: none;
@@ -240,7 +276,6 @@
     }
     #send-btn:hover:not(:disabled) { background: var(--accent-hover); }
     #send-btn:disabled { background: var(--border); cursor: not-allowed; }
-    #file-input { display: none; }
     .input-hint { font-size: 11px; color: var(--text-muted); text-align: center; padding-top: 6px; }
 
     /* ══════════════════════════════════════════
@@ -254,7 +289,7 @@
     .message-text h1 { font-size: 1.5em; }
     .message-text h2 { font-size: 1.3em; }
     .message-text h3 { font-size: 1.1em; }
-    .message-text p { margin: 0.6em 0; line-height: 1.6; }
+    .message-text p { margin: 0.3em 0; line-height: 1.6; }
     .message-text code {
       background: var(--bg-input); color: #e9c062;
       padding: 2px 6px; border-radius: 4px;
@@ -274,9 +309,9 @@
       margin: 0.8em 0; color: var(--text-muted); font-style: italic;
     }
     .message-text ul, .message-text ol {
-      margin: 0.6em 0; padding-left: 1.5em; line-height: 1.8;
+      margin: 0.4em 0; padding-left: 1.5em; line-height: 1.8;
     }
-    .message-text li { margin: 0.3em 0; }
+    .message-text li { margin: 0.2em 0; }
     .message-text strong { font-weight: 600; color: var(--text-primary); }
     .message-text em { font-style: italic; }
     .message-text a {
@@ -536,7 +571,7 @@
     <div id="welcome">
       <div class="welcome-icon">💬</div>
       <h2>Ask your documents anything</h2>
-      <p>Upload a PDF using the button in the input box, then ask a question.
+      <p>Upload a file using the button in the input box, then ask a question.
          The RAG pipeline will retrieve the most relevant chunks and generate an answer.</p>
     </div>
   </div>
@@ -544,14 +579,7 @@
   <!-- Input area -->
   <div id="input-area">
     <div id="input-box">
-      <div id="file-preview">
-        <span>📎</span>
-        <span class="file-name" id="file-name-label"></span>
-        <button id="remove-file" onclick="removeFile()" title="Remove">✕</button>
-      </div>
       <div class="input-row">
-        <button class="icon-btn" title="Upload PDF" onclick="document.getElementById('file-input').click()">📎</button>
-        <input type="file" id="file-input" accept=".pdf,.docx,.pptx,.txt" onchange="onFileSelected(event)">
         <textarea id="query-input" rows="1"
           placeholder="Ask a question about your documents..."
           onkeydown="handleKey(event)"
@@ -559,7 +587,7 @@
         <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
       </div>
     </div>
-    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
+    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Use sidebar to upload documents</div>
   </div>
 </main>
 
@@ -620,6 +648,27 @@
   <span id="toast-icon"></span>
   <span id="toast-msg"></span>
 </div>
+<!-- Toast -->
+<div id="upload-toast">
+  <span id="toast-icon"></span>
+  <span id="toast-msg"></span>
+</div>
+
+<!-- DOCUMENT PREVIEW MODAL -->
+<div id="doc-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:400; align-items:center; justify-content:center;">
+  <div style="width:min(900px,92vw); height:min(80vh,700px); background:var(--bg-sidebar); border:1px solid var(--border); border-radius:14px; overflow:hidden; display:flex; flex-direction:column;">
+    
+    <div style="padding:12px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
+      <div id="doc-modal-title" style="font-weight:600; font-size:13px; color:var(--text-primary);"></div>
+      <button class="icon-btn" onclick="closeDocModal()">✕</button>
+    </div>
+
+    <div id="doc-modal-body" style="padding:14px; overflow:auto; color:var(--text-primary); font-size:13px; line-height:1.6;">
+      Loading…
+    </div>
+
+  </div>
+</div>
 
 <!-- ═══════════════════════════════════════════════
      SCRIPTS
@@ -628,13 +677,14 @@
 const API = 'http://localhost:5000';
 
 // ── State ─────────────────────────────────────
-let attachedFile   = null;
 let messages       = [];
 let msgCounter     = 0;
 let authMode       = 'login';   // 'login' | 'register'
 let currentUser    = null;      // { id, username, email }
 let currentToken   = localStorage.getItem('rag_token') || null;
 let currentSession = null;      // active session id
+let toastTimeout   = null;      // toast notification timer
+let stageTimer     = null;      // loading stage progress timer
 
 // ── Bootstrap ─────────────────────────────────
 window.addEventListener('load', () => {
@@ -655,6 +705,40 @@ async function checkHealth() {
   } catch (e) {
     console.warn('Backend health check failed:', e);
     return false;
+  }
+}
+let activeSource = null;
+
+// Keep doc maps so Sources can open the right doc
+window._docsById = {};
+window._docIdByFilename = {};
+
+function setActiveSource(i) {
+  const sources = (window._lastSources || []);
+  activeSource = sources[i] || null;
+
+  // Visually mark active source
+  document.querySelectorAll('.source-card').forEach((el, idx) => {
+    el.classList.toggle('active', idx === i);
+  });
+
+  // Auto-open the document + highlight the chunk
+  if (activeSource) {
+    const docId =
+      activeSource.doc_id ||
+      (activeSource.filename ? window._docIdByFilename[activeSource.filename] : null);
+
+    if (docId) {
+      const filename = activeSource.filename || (window._docsById[docId]?.filename ?? `Document ${docId}`);
+      previewDoc(docId, filename, {
+        chunkOrder: activeSource.chunk_order ?? null,
+        needle: activeSource.content || activeSource.snippet || ""
+      });
+    } else {
+      showToast('✅', 'Source selected. (No doc_id/filename mapping found to auto-open preview.)', 'success');
+    }
+  } else {
+    showToast('✅', 'No source selected', 'success');
   }
 }
 
@@ -809,6 +893,9 @@ function switchRightTab(tab, el) {
 // SOURCES
 // ══════════════════════════════════════════════
 function renderSources(sources) {
+  window._lastSources = sources || [];
+  activeSource = null;
+
   const list  = document.getElementById('sources-list');
   const empty = document.getElementById('sources-empty');
 
@@ -818,16 +905,17 @@ function renderSources(sources) {
     return;
   }
   empty.style.display = 'none';
+
   list.innerHTML = sources.map((s, i) => `
-    <div class="source-card" title="${escapeHtml(s.content || '')}">
+    <div class="source-card" onclick="setActiveSource(${i})" title="${escapeHtml(s.content || '')}">
       <div class="source-file">📄 ${escapeHtml(s.filename || s.doc_id || `Source ${i+1}`)}</div>
       <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
       <div class="source-score">
         <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>
         ${s.score != null ? `<div class="score-bar"><div class="score-fill" style="width:${(s.score*100).toFixed(0)}%"></div></div>` : ''}
       </div>
-    </div>`
-  ).join('');
+    </div>
+  `).join('');
 }
 
 // ══════════════════════════════════════════════
@@ -974,27 +1062,90 @@ async function uploadDocumentFromSidebar(file) {
 
 async function loadDocuments() {
   try {
-    const url = currentUser
-      ? `${API}/api/documents/?user_id=${currentUser.id}`
-      : `${API}/api/documents/`;
-    const res  = await fetch(url);
+    const res  = await fetch(`${API}/api/documents/`);
     const data = await res.json();
     const list = document.getElementById('docs-list');
     const docs = data.documents || data;
-    if (!docs.length) {
+
+    // Build maps for quick lookup by Sources click
+    window._docsById = {};
+    window._docIdByFilename = {};
+    (docs || []).forEach(d => {
+      window._docsById[d.id] = d;
+      if (d.filename) window._docIdByFilename[d.filename] = d.id;
+    });
+
+    if (!docs?.length) {
       list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
       return;
     }
+
     list.innerHTML = docs.map(doc => `
-      <div class="doc-item">
+      <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
         <span class="doc-icon">📄</span>
         <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
         <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
       </div>`
     ).join('');
-  } catch(e) { console.warn('Could not load documents', e); }
+  } catch(e) {
+    console.warn('Could not load documents', e);
+  }
 }
 
+// Preview as segmented chunk cards + highlight the matched chunk
+async function previewDoc(docId, filename, opts = {}) {
+  try {
+    const limit = 200;
+    const res = await fetch(`${API}/api/documents/${docId}?limit=${limit}`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      openDocModal(filename, `<div style="color:var(--text-muted)">${escapeHtml(data.error || "Preview failed")}</div>`);
+      return;
+    }
+
+    const chunks = data.chunks || [];
+    const needle = opts.needle || "";
+    const chunkOrder = (opts.chunkOrder !== null && opts.chunkOrder !== undefined) ? Number(opts.chunkOrder) : null;
+
+    const tip = `
+      <div style="color:var(--text-muted); margin-bottom:10px;">
+        ${chunkOrder !== null
+          ? `Highlighting retrieved chunk <b>#${chunkOrder}</b>…`
+          : (needle ? "Highlighting last selected source…" : "Tip: click a source to auto-open and highlight its chunk.")
+        }
+      </div>
+    `;
+
+    const cards = chunks.map(c => {
+      const isHit =
+        (chunkOrder !== null && c.chunk_order === chunkOrder) ||
+        (chunkOrder === null && needle && (c.content || "").includes(needle));
+
+      return `
+        <div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk="${c.chunk_order}"
+             style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--bg-input);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="font-weight:600; color:var(--accent);">Chunk ${c.chunk_order}</div>
+            <div style="font-size:11px; color:var(--text-muted);">${c.len || (c.content||'').length} chars</div>
+          </div>
+          <div style="white-space:pre-wrap;">${escapeHtml(c.content || "")}</div>
+        </div>
+      `;
+    }).join('');
+
+    openDocModal(filename, tip + cards);
+
+    // Auto-scroll to highlighted chunk
+    setTimeout(() => {
+      const target = document.querySelector('#doc-modal-body .chunk-card.highlight');
+      if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 60);
+
+  } catch {
+    openDocModal(filename, `<div style="color:var(--text-muted)">Backend unreachable.</div>`);
+  }
+}
 async function deleteDoc(docId, e) {
   e.stopPropagation();
   if (!confirm('Delete this document and all its chunks?')) return;
@@ -1006,59 +1157,23 @@ async function deleteDoc(docId, e) {
 }
 
 // ══════════════════════════════════════════════
-// FILE UPLOAD
-// ══════════════════════════════════════════════
-function onFileSelected(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  attachedFile = file;
-  document.getElementById('file-name-label').textContent = file.name;
-  document.getElementById('file-preview').classList.add('visible');
-}
-function removeFile() {
-  attachedFile = null;
-  document.getElementById('file-input').value = '';
-  document.getElementById('file-name-label').textContent = '';
-  document.getElementById('file-preview').classList.remove('visible');
-}
-async function uploadDocument(file) {
-  showToast('⏳', `Uploading ${file.name}…`, '');
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('subject', 'AAI3008');
-  if (currentUser) formData.append('user_id', currentUser.id);
-  try {
-    const res = await fetch(`${API}/api/documents/upload`, { method: 'POST', body: formData });
-    if (res.ok) {
-      showToast('✅', `${file.name} ingested!`, 'success');
-      loadDocuments();
-    } else {
-      const err = await res.json();
-      showToast('❌', err.error || 'Upload failed.', 'error');
-    }
-  } catch { showToast('❌', 'Upload failed — backend unreachable.', 'error'); }
-}
-
 // ══════════════════════════════════════════════
 // QUERY
 // ══════════════════════════════════════════════
 async function sendQuery() {
   const textarea = document.getElementById('query-input');
   const query    = textarea.value.trim();
-  if (!query && !attachedFile) return;
+  if (!query) return;
 
   document.getElementById('welcome')?.remove();
-
-  if (attachedFile) { await uploadDocument(attachedFile); removeFile(); }
-  if (!query) return;
 
   await ensureSession();
 
   appendMessage('user', null, query);
   textarea.value = ''; autoResize(textarea);
-
+  //loading messages
   const loadingId = appendMessage('bot', null, 'Thinking…', true);
-
+  startStageProgress(loadingId);
   // Clear sources while loading
   renderSources(null);
   document.getElementById('sources-empty').style.display = 'block';
@@ -1101,7 +1216,7 @@ function appendMessage(role, docName, text, isLoading = false) {
     <div class="message-body">
       <div class="message-role">${isUser ? 'You' : 'RAG Assistant'}</div>
       ${docName ? `<div class="message-doc-badge">📄 ${escapeHtml(docName)}</div>` : ''}
-      <div class="message-text ${isLoading ? 'loading' : ''}">${isUser ? escapeHtml(text) : renderMarkdown(text)}</div>
+      <div class="message-text ${isLoading ? 'loading' : ''} ${isUser ? 'plain' : 'md'}">${isUser ? escapeHtml(text) : renderMarkdown(text)}</div>
     </div>`;
   win.appendChild(div);
   win.scrollTop = win.scrollHeight;
@@ -1121,11 +1236,10 @@ function newChat() {
     <div id="welcome">
       <div class="welcome-icon">💬</div>
       <h2>Ask your documents anything</h2>
-      <p>Upload a PDF using the button in the input box, then ask a question.</p>
+      <p>Upload documents using the sidebar, then ask questions about them.</p>
     </div>`;
   document.getElementById('query-input').value = '';
   renderSources(null);
-  removeFile();
 }
 
 // ══════════════════════════════════════════════
@@ -1154,7 +1268,6 @@ function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 160) + 'px';
 }
-let toastTimeout;
 function showToast(icon, msg, type) {
   const toast = document.getElementById('upload-toast');
   document.getElementById('toast-icon').textContent = icon;
@@ -1163,6 +1276,66 @@ function showToast(icon, msg, type) {
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => { toast.className = ''; }, 3500);
 }
+//loading messages
+function startStageProgress(messageId) {
+  const el = document.querySelector(`#${messageId} .message-text`);
+  if (!el) return;
+
+  const stages = [
+    { t: 200,  msg: "Retrieving relevant chunks…" },
+    { t: 900,  msg: "Reranking for best matches…" },
+    { t: 1600, msg: "Generating answer…" }
+  ];
+
+  let i = 0;
+  stageTimer = setInterval(() => {
+    if (i >= stages.length) return clearInterval(stageTimer);
+    el.innerHTML = renderMarkdown(stages[i].msg);
+    i++;
+  }, 700);
+}
+
+function stopStageProgress() {
+  if (stageTimer) clearInterval(stageTimer);
+  stageTimer = null;
+}
+function openDocModal(title, bodyHtml) {
+  document.getElementById('doc-modal-title').textContent = title || 'Document';
+  document.getElementById('doc-modal-body').innerHTML = bodyHtml || 'No preview available.';
+  document.getElementById('doc-modal').style.display = 'flex';
+}
+
+function closeDocModal() {
+  document.getElementById('doc-modal').style.display = 'none';
+}
+function highlightText(fullText, needle) {
+  if (!needle || needle.length < 20) return escapeHtml(fullText);
+
+  // Escape regex chars
+  const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  // Keep it safe: limit needle length so we don’t nuke performance
+  const shortNeedle = needle.slice(0, 400);
+  const escShort = shortNeedle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const re = new RegExp(escShort, 'gi');
+  const safeFull = escapeHtml(fullText);
+
+  // Highlight by applying regex on the escaped full text is messy (entities change length),
+  // so we do a simple approach: highlight on raw first, then escape in parts.
+  const parts = fullText.split(new RegExp(`(${escShort})`, 'i'));
+
+  return parts.map(p => {
+    if (p.toLowerCase() === shortNeedle.toLowerCase()) {
+      return `<mark style="background: rgba(16,163,127,0.35); color: inherit; padding: 0 2px; border-radius: 3px;">${escapeHtml(p)}</mark>`;
+    }
+    return escapeHtml(p);
+  }).join('');
+}
+// Close when clicking outside modal
+document.getElementById('doc-modal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'doc-modal') closeDocModal();
+});
 </script>
 </body>
 </html>
