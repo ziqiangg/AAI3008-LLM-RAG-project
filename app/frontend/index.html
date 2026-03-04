@@ -906,16 +906,20 @@ function renderSources(sources) {
   }
   empty.style.display = 'none';
 
-  list.innerHTML = sources.map((s, i) => `
+  list.innerHTML = sources.map((s, i) => {
+    const page = s.metadata?.source?.page;
+    const pageDisplay = page != null ? ` • Page ${page}` : '';
+    return `
     <div class="source-card" onclick="setActiveSource(${i})" title="${escapeHtml(s.content || '')}">
-      <div class="source-file">📄 ${escapeHtml(s.filename || s.doc_id || `Source ${i+1}`)}</div>
+      <div class="source-file">📄 ${escapeHtml(s.filename || s.doc_id || `Source ${i+1}`)}${pageDisplay}</div>
       <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
       <div class="source-score">
         <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>
         ${s.score != null ? `<div class="score-bar"><div class="score-fill" style="width:${(s.score*100).toFixed(0)}%"></div></div>` : ''}
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 // ══════════════════════════════════════════════
@@ -1122,12 +1126,16 @@ async function previewDoc(docId, filename, opts = {}) {
         (chunkOrder !== null && c.chunk_order === chunkOrder) ||
         (chunkOrder === null && needle && (c.content || "").includes(needle));
 
+      const page = c.metadata?.source?.page;
+      const pageDisplay = page != null ? `Page ${page} • ` : '';
+      const charCount = c.len || (c.content||'').length;
+
       return `
         <div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk="${c.chunk_order}"
              style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--bg-input);">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <div style="font-weight:600; color:var(--accent);">Chunk ${c.chunk_order}</div>
-            <div style="font-size:11px; color:var(--text-muted);">${c.len || (c.content||'').length} chars</div>
+            <div style="font-size:11px; color:var(--text-muted);">${pageDisplay}${charCount} chars</div>
           </div>
           <div style="white-space:pre-wrap;">${escapeHtml(c.content || "")}</div>
         </div>

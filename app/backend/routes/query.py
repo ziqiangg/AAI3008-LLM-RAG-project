@@ -183,7 +183,8 @@ def ask_question():
                     'filename': chunk['filename'],
                     'content': chunk['content'][:300] + '...' if len(chunk['content']) > 300 else chunk['content'],
                     'score': chunk.get('rerank_score', chunk.get('similarity', 0.0)),
-                    'chunk_order': chunk.get('chunk_order', 0)
+                    'chunk_order': chunk.get('chunk_order', 0),
+                    'metadata': chunk.get('metadata', {})  # Pass metadata including page numbers
                 })
             
             # ═══════════════════════════════════════════════════════════
