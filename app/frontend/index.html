@@ -281,7 +281,17 @@
     #send-btn:hover:not(:disabled) { background: var(--accent-hover); }
     #send-btn:disabled { background: var(--border); cursor: not-allowed; }
     .input-hint { font-size: 11px; color: var(--text-muted); text-align: center; padding-top: 6px; }
+    /* Web search toggle button */
+    #web-btn {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text-primary);
+    }
 
+    #web-btn.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(16,163,127,0.15);
+    }
     /* ══════════════════════════════════════════
        MARKDOWN STYLES
     ══════════════════════════════════════════ */
@@ -588,6 +598,7 @@
           placeholder="Ask a question about your documents..."
           onkeydown="handleKey(event)"
           oninput="autoResize(this)"></textarea>
+        <button id="web-btn" class="icon-btn" onclick="toggleWebSearch()" title="Web Search (trusted sources only)">🌐</button>
         <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
       </div>
     </div>
@@ -679,7 +690,7 @@
 ════════════════════════════════════════════════ -->
 <script>
 const API = 'http://localhost:5000';
-
+let webSearchEnabled = false; // 🌐 web search toggle
 // ── State ─────────────────────────────────────
 let messages       = [];
 let msgCounter     = 0;
@@ -939,10 +950,19 @@ function renderSources(sources) {
     const dominantSubject = s.metadata?.dominant_subject || 'General';
     const subjectColor = SUBJECT_COLORS[dominantSubject] || SUBJECT_COLORS['General'];
     const subjectBadge = `<span style="background:${subjectColor}20; color:${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; margin-left:6px;">${dominantSubject}</span>`;
-    
+    const isWeb = (s.source_type === 'web') || (s.metadata?.source_type === 'web');
+    const icon = isWeb ? '🌐' : '📄';
+    const url = s.url || s.metadata?.url;
+    const title = isWeb
+      ? (s.title || s.filename || `Web Source ${i+1}`)
+      : (s.filename || s.doc_id || `Source ${i+1}`);
+
+    const clickHandler = isWeb && url
+      ? `openWebSource('${escapeJs(url)}', ${i})`
+      : `setActiveSource(${i})`;
     return `
-    <div class="source-card" onclick="setActiveSource(${i})" title="${escapeHtml(s.content || '')}">
-      <div class="source-file">📄 ${escapeHtml(s.filename || s.doc_id || `Source ${i+1}`)}${pageDisplay}${subjectBadge}</div>
+    <div class="source-card" onclick="${clickHandler}" title="${escapeHtml(s.content || '')}">
+      <div class="source-file">${icon} ${escapeHtml(title)}${pageDisplay}${subjectBadge}</div>
       <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
       <div class="source-score">
         <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>
@@ -952,7 +972,13 @@ function renderSources(sources) {
   `;
   }).join('');
 }
-
+function openWebSource(url, idx) {
+  setActiveSource(idx);
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+function escapeJs(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+}
 // ══════════════════════════════════════════════
 // SESSIONS
 // ══════════════════════════════════════════════
@@ -1293,7 +1319,13 @@ function editDocumentSubject(docId, currentSubjects) {
     if (e.target === modal) modal.remove();
   };
 }
+function toggleWebSearch() {
+  webSearchEnabled = !webSearchEnabled;
+  const btn = document.getElementById('web-btn');
+  if (btn) btn.classList.toggle('active', webSearchEnabled);
 
+  showToast('🌐', webSearchEnabled ? 'Web search enabled' : 'Web search disabled', 'success');
+}
 // ══════════════════════════════════════════════
 // ══════════════════════════════════════════════
 // QUERY
@@ -1317,7 +1349,7 @@ async function sendQuery() {
   document.getElementById('sources-empty').style.display = 'block';
 
   try {
-    const payload = { question: query };
+    const payload = { question: query, web_search: webSearchEnabled };
     if (currentSession) payload.session_id = currentSession;
 
     const res  = await fetch(`${API}/api/query`, {

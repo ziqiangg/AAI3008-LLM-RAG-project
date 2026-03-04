@@ -10,6 +10,43 @@ load_dotenv()
 
 class Config:
     """Base configuration"""
+    #allowlist for web search
+    #Reject non-HTTPS URLs (if WEB_REQUIRE_HTTPS).
+    #Reject domains not in allowlist (including subdomain handling).
+    #Follow redirects only if final URL is still allowed.
+    #Strip scripts, keep text only, cap size.
+    #WEB_SEARCH_ENABLED_DEFAULT = False
+
+    WEB_SEARCH_DEFAULT = False  # UI toggle default
+
+    # keywords to detect explicit user request (in-message)
+    WEB_EXPLICIT_KEYWORDS = [
+        "search the web", "search online", "look up online", "lookup online",
+        "browse the web", "check the latest", "latest info", "verify online",
+    ]
+
+    WEB_REQUIRE_HTTPS = True
+    WEB_MAX_RESULTS = 5         # number of search results to fetch
+    WEB_MAX_CHARS_PER_PAGE = 12000
+    WEB_TIMEOUT_S = 8
+
+    # Strict allowlist of trusted domains (edit as you like)
+    WEB_TRUSTED_DOMAINS = {
+        "docs.python.org",
+        "developer.mozilla.org",
+        "github.com",
+        "raw.githubusercontent.com",
+        "geeksforgeeks.org",
+        "pypi.org",
+        "arxiv.org",
+        "openai.com",
+        "cloud.google.com",
+        "aws.amazon.com",
+    }
+
+    # Search provider (recommended: Serper). If key missing => web lane returns empty.
+    SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
+    SERPER_ENDPOINT = "https://google.serper.dev/search"
     # JWT Configuration
     JWT_SECRET_KEY              = os.getenv('JWT_SECRET_KEY', 'jwt-dev-key-change-in-production')
     JWT_ACCESS_TOKEN_EXPIRES    = 604800   # 7 days in seconds
@@ -217,3 +254,5 @@ config = {
     'production': ProductionConfig,
     'default': DevelopmentConfig
 }
+
+
