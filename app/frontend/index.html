@@ -252,19 +252,6 @@
       transition: border-color 0.2s;
     }
     #input-box:focus-within { border-color: var(--accent); }
-    #file-preview {
-      display: none; align-items: center; gap: 8px;
-      background: var(--bg-main); border: 1px solid var(--border);
-      border-radius: 8px; padding: 6px 12px;
-      font-size: 12px; color: var(--text-muted);
-    }
-    #file-preview.visible { display: flex; }
-    #file-preview .file-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
-    #remove-file {
-      background: none; border: none; cursor: pointer;
-      color: var(--text-muted); font-size: 16px; line-height: 1; padding: 0 2px;
-    }
-    #remove-file:hover { color: var(--danger); }
     .input-row { display: flex; align-items: flex-end; gap: 8px; }
     #query-input {
       flex: 1; background: transparent; border: none; outline: none;
@@ -289,7 +276,6 @@
     }
     #send-btn:hover:not(:disabled) { background: var(--accent-hover); }
     #send-btn:disabled { background: var(--border); cursor: not-allowed; }
-    #file-input { display: none; }
     .input-hint { font-size: 11px; color: var(--text-muted); text-align: center; padding-top: 6px; }
 
     /* ══════════════════════════════════════════
@@ -585,7 +571,7 @@
     <div id="welcome">
       <div class="welcome-icon">💬</div>
       <h2>Ask your documents anything</h2>
-      <p>Upload a PDF using the button in the input box, then ask a question.
+      <p>Upload a file using the button in the input box, then ask a question.
          The RAG pipeline will retrieve the most relevant chunks and generate an answer.</p>
     </div>
   </div>
@@ -593,14 +579,7 @@
   <!-- Input area -->
   <div id="input-area">
     <div id="input-box">
-      <div id="file-preview">
-        <span>📎</span>
-        <span class="file-name" id="file-name-label"></span>
-        <button id="remove-file" onclick="removeFile()" title="Remove">✕</button>
-      </div>
       <div class="input-row">
-        <button class="icon-btn" title="Upload PDF" onclick="document.getElementById('file-input').click()">📎</button>
-        <input type="file" id="file-input" accept=".pdf,.docx,.pptx,.txt" onchange="onFileSelected(event)">
         <textarea id="query-input" rows="1"
           placeholder="Ask a question about your documents..."
           onkeydown="handleKey(event)"
@@ -608,7 +587,7 @@
         <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
       </div>
     </div>
-    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line</div>
+    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Use sidebar to upload documents</div>
   </div>
 </main>
 
@@ -698,13 +677,14 @@
 const API = 'http://localhost:5000';
 
 // ── State ─────────────────────────────────────
-let attachedFile   = null;
 let messages       = [];
 let msgCounter     = 0;
 let authMode       = 'login';   // 'login' | 'register'
 let currentUser    = null;      // { id, username, email }
 let currentToken   = localStorage.getItem('rag_token') || null;
 let currentSession = null;      // active session id
+let toastTimeout   = null;      // toast notification timer
+let stageTimer     = null;      // loading stage progress timer
 
 // ── Bootstrap ─────────────────────────────────
 window.addEventListener('load', () => {
@@ -1112,7 +1092,7 @@ async function loadDocuments() {
   }
 }
 
-a// Preview as segmented chunk cards + highlight the matched chunk
+// Preview as segmented chunk cards + highlight the matched chunk
 async function previewDoc(docId, filename, opts = {}) {
   try {
     const limit = 200;
@@ -1177,51 +1157,15 @@ async function deleteDoc(docId, e) {
 }
 
 // ══════════════════════════════════════════════
-// FILE UPLOAD
-// ══════════════════════════════════════════════
-function onFileSelected(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  attachedFile = file;
-  document.getElementById('file-name-label').textContent = file.name;
-  document.getElementById('file-preview').classList.add('visible');
-}
-function removeFile() {
-  attachedFile = null;
-  document.getElementById('file-input').value = '';
-  document.getElementById('file-name-label').textContent = '';
-  document.getElementById('file-preview').classList.remove('visible');
-}
-async function uploadDocument(file) {
-  showToast('⏳', `Uploading ${file.name}…`, '');
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('subject', 'AAI3008');
-  if (currentUser) formData.append('user_id', currentUser.id);
-  try {
-    const res = await fetch(`${API}/api/documents/upload`, { method: 'POST', body: formData });
-    if (res.ok) {
-      showToast('✅', `${file.name} ingested!`, 'success');
-      loadDocuments();
-    } else {
-      const err = await res.json();
-      showToast('❌', err.error || 'Upload failed.', 'error');
-    }
-  } catch { showToast('❌', 'Upload failed — backend unreachable.', 'error'); }
-}
-
 // ══════════════════════════════════════════════
 // QUERY
 // ══════════════════════════════════════════════
 async function sendQuery() {
   const textarea = document.getElementById('query-input');
   const query    = textarea.value.trim();
-  if (!query && !attachedFile) return;
+  if (!query) return;
 
   document.getElementById('welcome')?.remove();
-
-  if (attachedFile) { await uploadDocument(attachedFile); removeFile(); }
-  if (!query) return;
 
   await ensureSession();
 
@@ -1292,11 +1236,10 @@ function newChat() {
     <div id="welcome">
       <div class="welcome-icon">💬</div>
       <h2>Ask your documents anything</h2>
-      <p>Upload a PDF using the button in the input box, then ask a question.</p>
+      <p>Upload documents using the sidebar, then ask questions about them.</p>
     </div>`;
   document.getElementById('query-input').value = '';
   renderSources(null);
-  removeFile();
 }
 
 // ══════════════════════════════════════════════
@@ -1325,7 +1268,6 @@ function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 160) + 'px';
 }
-let toastTimeout;
 function showToast(icon, msg, type) {
   const toast = document.getElementById('upload-toast');
   document.getElementById('toast-icon').textContent = icon;
@@ -1335,7 +1277,6 @@ function showToast(icon, msg, type) {
   toastTimeout = setTimeout(() => { toast.className = ''; }, 3500);
 }
 //loading messages
-let stageTimer = null;
 function startStageProgress(messageId) {
   const el = document.querySelector(`#${messageId} .message-text`);
   if (!el) return;

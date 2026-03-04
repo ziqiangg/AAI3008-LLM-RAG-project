@@ -9,11 +9,11 @@ from langchain_community.document_loaders import (
     PDFPlumberLoader,
     Docx2txtLoader,
     TextLoader,
-    UnstructuredPowerPointLoader,
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from sqlalchemy.orm import Session as DBSession
+from pptx import Presentation
 
 from app.backend.config import Config
 from app.backend.models import Document, DocumentChunk
@@ -57,10 +57,11 @@ def _looks_like_bullets(text: str) -> bool:
     return bulletish / max(len(lines), 1) >= 0.35
 
 
-def _split_into_units(text: str, max_unit_chars: int = 400) -> List[str]:
+def _split_into_units(text: str, max_unit_chars: int = 600) -> List[str]:
     """
     Split text into "semantic-ish" units (bullets/paragraphs, then sentences).
-    Units should be small so embeddings can detect topic shifts.
+    Units should be reasonably sized for efficient embedding.
+    Increased from 400 to 600 chars for better performance.
     """
     if not text:
         return []
@@ -200,22 +201,44 @@ def semantic_chunk_documents(
 # Loading
 # ──────────────────────────────────────────────────────────────────────────
 
+def _load_pptx_with_python_pptx(file_path: str) -> List[LCDocument]:
+    """Load PPTX using python-pptx library directly (no API calls)."""
+    try:
+        prs = Presentation(file_path)
+        docs = []
+        
+        for slide_idx, slide in enumerate(prs.slides, start=1):
+            slide_text_parts = []
+            
+            # Extract text from all shapes
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text:
+                    slide_text_parts.append(shape.text.strip())
+            
+            # Combine all text for this slide
+            slide_text = "\n".join(slide_text_parts).strip()
+            
+            if slide_text:  # Only add non-empty slides
+                docs.append(
+                    LCDocument(
+                        page_content=slide_text,
+                        metadata={
+                            "source": file_path,
+                            "slide_number": slide_idx,
+                            "total_slides": len(prs.slides),
+                        }
+                    )
+                )
+        
+        return docs if docs else [LCDocument(page_content="", metadata={"source": file_path})]
+    except Exception as e:
+        raise ValueError(f"PPTX loading failed: {e}")
+
 def load_document(file_path: str) -> List[LCDocument]:
     ext = os.path.splitext(file_path)[1].lower()
 
     if ext == ".pptx":
-        try:
-            return UnstructuredPowerPointLoader(
-                file_path,
-                mode="elements",
-                strategy="fast",
-            ).load()
-        except Exception as e:
-            raise ValueError(
-                "PPTX ingestion failed. You likely need local deps. "
-                "Install: python-pptx and unstructured[pptx]. "
-                f"Original error: {e}"
-            )
+        return _load_pptx_with_python_pptx(file_path)
 
     loader_map = {
         ".pdf": PDFPlumberLoader,
@@ -258,10 +281,14 @@ def _split_with_recursive(
 
 def _pptx_docs_by_slide(lc_docs: List[LCDocument]) -> List[LCDocument]:
     """
-    UnstructuredPowerPointLoader often returns many small element docs.
-    Merge them into one doc per slide using metadata keys.
-    Preserves source metadata where possible.
+    Merge multiple document elements into one doc per slide.
+    Now mainly used if we switch back to UnstructuredPowerPointLoader.
+    With python-pptx loader, docs are already slide-based.
     """
+    # If already slide-based (from python-pptx), just return
+    if all(d.metadata.get("slide_number") for d in lc_docs if d.metadata):
+        return lc_docs
+    
     slides: Dict[int, List[str]] = defaultdict(list)
     slide_meta: Dict[int, Dict[str, Any]] = {}
 
@@ -478,16 +505,35 @@ def clean_pdf_extraction_noise(text: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────
 
 def split_documents_by_type(lc_docs: List[LCDocument], file_ext: str) -> List[LCDocument]:
+    """
+    Adaptive chunking: Use semantic chunking for smaller/medium docs,
+    fall back to fast recursive chunking for very large documents.
+    """
     ext = f".{file_ext.lower().lstrip('.')}"
-
-    # --- PPTX ---
+    
+    # Calculate total document size
+    total_chars = sum(len(d.page_content or "") for d in lc_docs)
+    
+    # Performance threshold: if document is too large, use simpler chunking
+    LARGE_DOC_THRESHOLD = 150000  # ~150KB of text
+    use_fast_chunking = total_chars > LARGE_DOC_THRESHOLD
+    
+    if use_fast_chunking:
+        print(f"     ℹ️  Large document ({total_chars} chars), using fast recursive chunking")
+        return _split_with_recursive(
+            lc_docs,
+            chunk_size=1000,
+            chunk_overlap=100,
+        )
+    
+    # --- PPTX (already slide-based, usually small) ---
     if ext == ".pptx":
-        slide_docs = _pptx_docs_by_slide(lc_docs)
+        # No need to merge slides, already loaded per-slide
         return semantic_chunk_documents(
-            slide_docs,
-            max_chunk_chars=1400,
-            min_chunk_chars=250,
-            similarity_threshold=0.55,
+            lc_docs,
+            max_chunk_chars=1200,  # Reduced for faster embedding
+            min_chunk_chars=200,
+            similarity_threshold=0.58,  # Slightly higher = fewer chunks
             debug=False,
         )
 
@@ -498,18 +544,18 @@ def split_documents_by_type(lc_docs: List[LCDocument], file_ext: str) -> List[LC
             merged_docs = _merge_pdf_pages(lc_docs, window_pages=3)
             return semantic_chunk_documents(
                 merged_docs,
-                max_chunk_chars=1600,
-                min_chunk_chars=300,
-                similarity_threshold=0.55,
+                max_chunk_chars=1400,
+                min_chunk_chars=250,
+                similarity_threshold=0.58,
                 debug=False,
             )
 
         # normal PDFs: semantic chunk per page
         return semantic_chunk_documents(
             lc_docs,
-            max_chunk_chars=1400,
-            min_chunk_chars=300,
-            similarity_threshold=0.55,
+            max_chunk_chars=1200,
+            min_chunk_chars=250,
+            similarity_threshold=0.58,
             debug=False,
         )
 
@@ -517,18 +563,18 @@ def split_documents_by_type(lc_docs: List[LCDocument], file_ext: str) -> List[LC
     if ext == ".docx":
         return semantic_chunk_documents(
             lc_docs,
-            max_chunk_chars=1400,
-            min_chunk_chars=300,
-            similarity_threshold=0.55,
+            max_chunk_chars=1200,
+            min_chunk_chars=250,
+            similarity_threshold=0.58,
             debug=False,
         )
 
     # --- TXT/default ---
     return semantic_chunk_documents(
         lc_docs,
-        max_chunk_chars=1200,
-        min_chunk_chars=250,
-        similarity_threshold=0.55,
+        max_chunk_chars=1000,
+        min_chunk_chars=200,
+        similarity_threshold=0.58,
         debug=False,
     )
 
