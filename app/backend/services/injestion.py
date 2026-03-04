@@ -4,6 +4,12 @@ import re
 from typing import List, Optional, Dict, Any
 from collections import defaultdict
 
+try:
+    import fitz  # PyMuPDF
+    PYMUPDF_AVAILABLE = True
+except ImportError:
+    PYMUPDF_AVAILABLE = False
+
 from langchain_core.documents import Document as LCDocument
 from langchain_community.document_loaders import (
     PDFPlumberLoader,
@@ -201,6 +207,41 @@ def semantic_chunk_documents(
 # Loading
 # ──────────────────────────────────────────────────────────────────────────
 
+def _load_pdf_with_pymupdf(file_path: str) -> List[LCDocument]:
+    """Load PDF using PyMuPDF (fitz) - better for mathematical content."""
+    try:
+        doc = fitz.open(file_path)
+        lc_docs = []
+        
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            # Extract text with layout preservation
+            text = page.get_text("text", sort=True)
+            
+            # Clean up common PDF extraction artifacts
+            text = text.replace('\x00', '')  # Remove null bytes
+            text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+            text = text.strip()
+            
+            if text:  # Only add non-empty pages
+                lc_docs.append(
+                    LCDocument(
+                        page_content=text,
+                        metadata={
+                            "source": file_path,
+                            "page": page_num + 1,
+                            "total_pages": len(doc),
+                        }
+                    )
+                )
+        
+        doc.close()
+        return lc_docs if lc_docs else [LCDocument(page_content="", metadata={"source": file_path})]
+    
+    except Exception as e:
+        raise ValueError(f"PyMuPDF loading failed: {e}")
+
+
 def _load_text_with_encoding(file_path: str) -> List[LCDocument]:
     """Load text file with UTF-8 encoding and fallback handling."""
     encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
@@ -281,9 +322,19 @@ def load_document(file_path: str) -> List[LCDocument]:
     # Handle text files with explicit UTF-8 encoding and fallback
     if ext == ".txt":
         return _load_text_with_encoding(file_path)
+    
+    # Handle PDFs with PyMuPDF (better for mathematical content)
+    if ext == ".pdf":
+        if PYMUPDF_AVAILABLE:
+            try:
+                return _load_pdf_with_pymupdf(file_path)
+            except Exception as e:
+                print(f"PyMuPDF failed ({e}), falling back to PDFPlumber...")
+                return PDFPlumberLoader(file_path).load()
+        else:
+            return PDFPlumberLoader(file_path).load()
 
     loader_map = {
-        ".pdf": PDFPlumberLoader,
         ".docx": Docx2txtLoader,
     }
 

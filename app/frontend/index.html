@@ -1388,40 +1388,6 @@ function escapeHtml(str) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function renderMarkdown(text) {
-  // FIRST: Pre-process ALL LaTeX patterns before markdown parsing
-  // This prevents marked.js from wrapping them in code blocks
-  let latexProtected = text;
-  let counter = 0;
-  const latexStore = {};
-  
-  // Protect display math: $$...$$ (process first, longer delimiter)
-  latexProtected = latexProtected.replace(/\$\$([\s\S]+?)\$\$/g, (match) => {
-    const key = `LATEXBLOCK${counter++}`;
-    latexStore[key] = match;
-    return `<!--${key}-->`;
-  });
-  
-  // Protect display math: \[...\]
-  latexProtected = latexProtected.replace(/\\\[([\s\S]+?)\\\]/g, (match) => {
-    const key = `LATEXBLOCK${counter++}`;
-    latexStore[key] = match;
-    return `<!--${key}-->`;
-  });
-  
-  // Protect inline math: $...$ (single dollar signs, not followed by $)
-  latexProtected = latexProtected.replace(/\$([^\s$][^$]*?[^\s$])\$/g, (match) => {
-    const key = `LATEXBLOCK${counter++}`;
-    latexStore[key] = match;
-    return `<!--${key}-->`;
-  });
-  
-  // Protect inline math: \(...\)
-  latexProtected = latexProtected.replace(/\\\(([^)]+?)\\\)/g, (match) => {
-    const key = `LATEXBLOCK${counter++}`;
-    latexStore[key] = match;
-    return `<!--${key}-->`;
-  });
-  
   // Configure marked options
   marked.setOptions({
     breaks: true,
@@ -1430,25 +1396,20 @@ function renderMarkdown(text) {
     mangle: false
   });
   
-  // Parse markdown and sanitize to prevent XSS
-  const rawHtml = marked.parse(latexProtected);
+  // Parse markdown to HTML
+  const rawHtml = marked.parse(text);
+  
+  // Sanitize to prevent XSS, but allow math elements
   const sanitized = DOMPurify.sanitize(rawHtml, {
-    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'mfrac', 'annotation'],
-    ADD_ATTR: ['xmlns'],
-    ALLOW_DATA_ATTR: false
+    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'msqrt', 'mroot', 'annotation'],
+    ADD_ATTR: ['xmlns']
   });
   
-  // Restore LaTeX blocks
-  let latexRestored = sanitized;
-  Object.keys(latexStore).forEach(key => {
-    latexRestored = latexRestored.replace(`<!--${key}-->`, latexStore[key]);
-  });
-  
-  // Create temporary container to render LaTeX
+  // Create container for rendering
   const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = latexRestored;
+  tempDiv.innerHTML = sanitized;
   
-  // Render LaTeX with KaTeX if available
+  // Render LaTeX with KaTeX (auto-render handles finding and rendering LaTeX)
   if (typeof renderMathInElement !== 'undefined') {
     try {
       renderMathInElement(tempDiv, {
@@ -1460,8 +1421,9 @@ function renderMarkdown(text) {
         ],
         throwOnError: false,
         trust: true,
-        // Process LaTeX even inside code blocks (in case some slipped through)
-        ignoredTags: []
+        // Allow processing in all elements
+        ignoredTags: [],
+        ignoredClasses: []
       });
     } catch (e) {
       console.warn('LaTeX rendering failed:', e);
