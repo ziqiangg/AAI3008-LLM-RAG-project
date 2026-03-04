@@ -10,7 +10,7 @@ from datetime import datetime
 from app.backend.database import get_db_session
 from app.backend.models import Session as ConvSession, Message, Document
 from app.backend.services.injestion import get_embeddings
-from app.backend.services import retrieval, reranking, generation
+from app.backend.services import retrieval, reranking, generation, classification
 from app.backend.config import Config
 
 query_bp = Blueprint('query', __name__)
@@ -163,10 +163,15 @@ def ask_question():
             # ═══════════════════════════════════════════════════════════
             # 6. GENERATE ANSWER
             # ═══════════════════════════════════════════════════════════
+            # Extract subject context from reranked chunks
+            subject_context = classification.extract_subject_context(reranked_chunks)
+            logger.info(f"[Query] Subject context: {subject_context['dominant_subject']} (confidence: {subject_context['dominant_confidence']:.2f})")
+            
             result = generation.generate_answer(
                 question=question,
                 context_chunks=reranked_chunks,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                subject_context=subject_context  # NEW: Pass subject context
             )
             
             answer = result['answer']

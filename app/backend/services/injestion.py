@@ -8,7 +8,6 @@ from langchain_core.documents import Document as LCDocument
 from langchain_community.document_loaders import (
     PDFPlumberLoader,
     Docx2txtLoader,
-    TextLoader,
 )
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -17,6 +16,7 @@ from pptx import Presentation
 
 from app.backend.config import Config
 from app.backend.models import Document, DocumentChunk
+from app.backend.services import classification
 
 # ── Singleton: model loaded once at startup ───────────────────────────────
 _embeddings: Optional[HuggingFaceEmbeddings] = None
@@ -201,6 +201,37 @@ def semantic_chunk_documents(
 # Loading
 # ──────────────────────────────────────────────────────────────────────────
 
+def _load_text_with_encoding(file_path: str) -> List[LCDocument]:
+    """Load text file with UTF-8 encoding and fallback handling."""
+    encodings = ['utf-8', 'utf-8-sig', 'latin-1', 'cp1252', 'iso-8859-1']
+    
+    for encoding in encodings:
+        try:
+            with open(file_path, 'r', encoding=encoding, errors='strict') as f:
+                content = f.read()
+            
+            # Ensure content is valid UTF-8 for storage
+            content.encode('utf-8')
+            
+            return [LCDocument(
+                page_content=content,
+                metadata={"source": file_path, "encoding": encoding}
+            )]
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            continue
+    
+    # Final fallback: read with errors='replace' to avoid complete failure
+    try:
+        with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.read()
+        return [LCDocument(
+            page_content=content,
+            metadata={"source": file_path, "encoding": "utf-8-fallback"}
+        )]
+    except Exception as e:
+        raise ValueError(f"Text file loading failed: {e}")
+
+
 def _load_pptx_with_python_pptx(file_path: str) -> List[LCDocument]:
     """Load PPTX using python-pptx library directly (no API calls)."""
     try:
@@ -213,7 +244,14 @@ def _load_pptx_with_python_pptx(file_path: str) -> List[LCDocument]:
             # Extract text from all shapes
             for shape in slide.shapes:
                 if hasattr(shape, "text") and shape.text:
-                    slide_text_parts.append(shape.text.strip())
+                    # Ensure text is properly decoded
+                    text = shape.text.strip()
+                    # Normalize text to ensure valid UTF-8
+                    try:
+                        text = text.encode('utf-8', errors='ignore').decode('utf-8')
+                    except:
+                        pass
+                    slide_text_parts.append(text)
             
             # Combine all text for this slide
             slide_text = "\n".join(slide_text_parts).strip()
@@ -240,10 +278,13 @@ def load_document(file_path: str) -> List[LCDocument]:
     if ext == ".pptx":
         return _load_pptx_with_python_pptx(file_path)
 
+    # Handle text files with explicit UTF-8 encoding and fallback
+    if ext == ".txt":
+        return _load_text_with_encoding(file_path)
+
     loader_map = {
         ".pdf": PDFPlumberLoader,
         ".docx": Docx2txtLoader,
-        ".txt": TextLoader,
     }
 
     loader_cls = loader_map.get(ext)
@@ -454,6 +495,16 @@ def _dedouble_word_if_encoded(word: str) -> str:
 def clean_pdf_extraction_noise(text: str) -> str:
     if not text:
         return ""
+    
+    # 0) Ensure text is valid UTF-8 and normalize encoding issues
+    try:
+        # Remove common mojibake patterns
+        text = text.encode('utf-8', errors='ignore').decode('utf-8')
+        # Replace common problematic characters
+        text = text.replace('\ufffd', '')  # Remove replacement character
+        text = text.replace('\x00', '')     # Remove null bytes
+    except:
+        pass
 
     # 1) Fix "doubled-letter words" safely (token-wise)
     def fix_token(tok: str) -> str:
@@ -605,6 +656,27 @@ def run_ingestion_pipeline(
     lc_docs = load_document(file_path)
     print(f"     → {len(lc_docs)} page(s)/element-doc(s) loaded")
 
+    # ── 1b. Classify Document Subjects ──
+    print("[1b] Classifying document subjects...")
+    embeddings_model = get_embeddings()
+    
+    # Extract sample from first few documents/pages
+    content_sample = ""
+    for doc in lc_docs[:5]:  # First 5 pages/elements
+        content_sample += doc.page_content + "\n"
+    content_sample = content_sample[:3000]  # Limit to 3000 chars
+    
+    # Classify subjects
+    classified_subjects = classification.classify_document_subjects(
+        content_sample=content_sample,
+        embeddings_model=embeddings_model
+    )
+    
+    # Extract subject names for document record
+    document_subjects = [s['name'] for s in classified_subjects]
+    print(f"     → Classified as: {', '.join(document_subjects)}")
+    print(f"     → Confidence: {classified_subjects[0]['confidence']:.2f}")
+
     # ── 2. Chunk ──
     print("[2] Chunking : method=semantic_embedding")
     chunks = split_documents_by_type(lc_docs, file_ext)
@@ -643,6 +715,21 @@ def run_ingestion_pipeline(
     if not vectors or not vectors[0]:
         raise RuntimeError("Embedding failed: got empty vectors.")
     print(f"     → dim={len(vectors[0])}")
+    
+    # ── 3b. Classify Chunk Topics ──
+    print(f"[3b] Classifying topics for {len(chunks)} chunks...")
+    chunk_classifications = []
+    
+    for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
+        # Classify topics for this chunk
+        topics = classification.classify_chunk_topics(
+            chunk_content=chunk.page_content,
+            chunk_embedding=vector,
+            document_subjects=document_subjects
+        )
+        chunk_classifications.append(topics)
+    
+    print(f"     → Topic classification complete")
 
     # ── 4. Create Document row ──
     doc = Document(
@@ -651,7 +738,7 @@ def run_ingestion_pipeline(
         file_path=os.path.abspath(file_path),
         file_type=file_ext,
         title=filename,
-        subject=subject or "General",
+        subject=document_subjects,  # Array of classified subjects
         chunk_count=len(chunks),
     )
     db_session.add(doc)
@@ -667,6 +754,16 @@ def run_ingestion_pipeline(
     }
 
     for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
+        # Get topic classification for this chunk
+        topics = chunk_classifications[idx]
+        
+        # Determine dominant subject and topic for quick access
+        dominant_subject = topics[0]['name'] if topics else document_subjects[0]
+        dominant_topic = ""
+        if topics and topics[0].get('topics'):
+            top_topic = topics[0]['topics'][0]
+            dominant_topic = f"{top_topic['name']}/{top_topic.get('subtopic', '')}".rstrip('/')
+        
         db_session.add(
             DocumentChunk(
                 document_id=doc.id,
@@ -680,6 +777,10 @@ def run_ingestion_pipeline(
                     "semantic_params": semantic_params,
                     "source": chunk.metadata,
                     "content_len": len(chunk.page_content or ""),
+                    # NEW: Subject and topic classification
+                    "subjects": topics,
+                    "dominant_subject": dominant_subject,
+                    "dominant_topic": dominant_topic,
                 },
             )
         )

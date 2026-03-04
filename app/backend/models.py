@@ -51,7 +51,7 @@ class Document(Base):
     file_path   = Column(String(500), nullable=False)
     file_type   = Column(String(50))  # e.g., 'pdf', 'docx'
     title       = Column(Text)
-    subject     = Column(String(255))  # e.g., 'Mathematics', 'ML'
+    subject     = Column(ARRAY(String))  # e.g., ['Math', 'Physics'] - multi-subject support
     upload_date = Column(TIMESTAMP, default=datetime.utcnow)
     chunk_count = Column(Integer, default=0)
     

@@ -9,6 +9,10 @@
   <!-- Markdown rendering libraries -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+  <!-- KaTeX for LaTeX math rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -706,8 +710,29 @@ async function checkHealth() {
     console.warn('Backend health check failed:', e);
     return false;
   }
-}
-let activeSource = null;
+}let activeSource = null;
+
+// Subject classification constants
+const SUBJECT_COLORS = {
+  'Math': '#3b82f6',
+  'Computer Science': '#10b981',
+  'Artificial Intelligence': '#8b5cf6',
+  'Physics': '#ef4444',
+  'Chemistry': '#f59e0b',
+  'Biology': '#14b8a6',
+  'Language Learning': '#ec4899',
+  'Geography': '#84cc16',
+  'Economics': '#06b6d4',
+  'Social Studies': '#f97316',
+  'Computer Systems': '#6366f1',
+  'General': '#6b7280'
+};
+
+const VALID_SUBJECTS = [
+  'Math', 'Computer Science', 'Artificial Intelligence', 'Physics', 
+  'Chemistry', 'Biology', 'Language Learning', 'Geography', 
+  'Economics', 'Social Studies', 'Computer Systems', 'General'
+];
 
 // Keep doc maps so Sources can open the right doc
 window._docsById = {};
@@ -909,9 +934,15 @@ function renderSources(sources) {
   list.innerHTML = sources.map((s, i) => {
     const page = s.metadata?.source?.page;
     const pageDisplay = page != null ? ` • Page ${page}` : '';
+    
+    // Extract subject for badge
+    const dominantSubject = s.metadata?.dominant_subject || 'General';
+    const subjectColor = SUBJECT_COLORS[dominantSubject] || SUBJECT_COLORS['General'];
+    const subjectBadge = `<span style="background:${subjectColor}20; color:${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; margin-left:6px;">${dominantSubject}</span>`;
+    
     return `
     <div class="source-card" onclick="setActiveSource(${i})" title="${escapeHtml(s.content || '')}">
-      <div class="source-file">📄 ${escapeHtml(s.filename || s.doc_id || `Source ${i+1}`)}${pageDisplay}</div>
+      <div class="source-file">📄 ${escapeHtml(s.filename || s.doc_id || `Source ${i+1}`)}${pageDisplay}${subjectBadge}</div>
       <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
       <div class="source-score">
         <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>
@@ -1084,13 +1115,30 @@ async function loadDocuments() {
       return;
     }
 
-    list.innerHTML = docs.map(doc => `
+    list.innerHTML = docs.map(doc => {
+      // Handle subject as array or fallback to General
+      const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : ['General']);
+      const primarySubject = subjects[0] || 'General';
+      const subjectColor = SUBJECT_COLORS[primarySubject] || SUBJECT_COLORS['General'];
+      
+      // Create subject badge with click-to-edit
+      const subjectBadge = `<span class="subject-badge" 
+        style="background:${subjectColor}20; color:${subjectColor}; border:1px solid ${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; margin-top:2px; display:inline-block;" 
+        onclick="event.stopPropagation(); editDocumentSubject(${doc.id}, ${JSON.stringify(subjects).replace(/"/g, '&quot;')})" 
+        title="Click to edit subject">${primarySubject}${subjects.length > 1 ? ` +${subjects.length-1}` : ''}</span>`;
+      
+      return `
       <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
-        <span class="doc-icon">📄</span>
-        <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="doc-icon">📄</span>
+            <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+          </div>
+          ${subjectBadge}
+        </div>
         <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
-      </div>`
-    ).join('');
+      </div>`;
+    }).join('');
   } catch(e) {
     console.warn('Could not load documents', e);
   }
@@ -1129,13 +1177,34 @@ async function previewDoc(docId, filename, opts = {}) {
       const page = c.metadata?.source?.page;
       const pageDisplay = page != null ? `Page ${page} • ` : '';
       const charCount = c.len || (c.content||'').length;
+      
+      // Extract subject/topic metadata
+      const subjects = c.metadata?.subjects || [];
+      const dominantSubject = c.metadata?.dominant_subject || 'General';
+      const dominantTopic = c.metadata?.dominant_topic || '';
+      
+      // Build subject badges
+      const subjectBadges = subjects.slice(0, 2).map(s => {
+        const color = SUBJECT_COLORS[s.name] || SUBJECT_COLORS['General'];
+        const confidence = Math.round((s.confidence || 0.5) * 100);
+        return `<span style="background:${color}20; color:${color}; border:1px solid ${color}40; padding:2px 5px; border-radius:3px; font-size:9px; font-weight:600; margin-right:4px; display:inline-block;">${s.name} ${confidence}%</span>`;
+      }).join('');
+      
+      // Topic display
+      const topicDisplay = dominantTopic ? `<div style="font-size:10px; color:var(--text-muted); margin-top:2px;">🏷️ ${dominantTopic}</div>` : '';
 
       return `
         <div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk="${c.chunk_order}"
              style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--bg-input);">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <div style="font-weight:600; color:var(--accent);">Chunk ${c.chunk_order}</div>
-            <div style="font-size:11px; color:var(--text-muted);">${pageDisplay}${charCount} chars</div>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+            <div style="flex:1;">
+              <div style="font-weight:600; color:var(--accent);">Chunk ${c.chunk_order}</div>
+              ${subjectBadges ? `<div style="margin-top:4px;">${subjectBadges}</div>` : ''}
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); text-align:right;">
+              ${pageDisplay}${charCount} chars
+              ${topicDisplay}
+            </div>
           </div>
           <div style="white-space:pre-wrap;">${escapeHtml(c.content || "")}</div>
         </div>
@@ -1162,6 +1231,67 @@ async function deleteDoc(docId, e) {
     if (res.ok) { showToast('🗑️', 'Document deleted.', 'success'); loadDocuments(); }
     else { showToast('❌', 'Delete failed.', 'error'); }
   } catch { showToast('❌', 'Backend unreachable.', 'error'); }
+}
+
+// Edit document subject
+function editDocumentSubject(docId, currentSubjects) {
+  const subjectOptions = VALID_SUBJECTS.map(s => 
+    `<option value="${s}" ${currentSubjects.includes(s) ? 'selected' : ''}>${s}</option>`
+  ).join('');
+  
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:10000;';
+  modal.innerHTML = `
+    <div style="background:#2d2d2d; padding:24px; border-radius:12px; max-width:400px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5); border:1px solid #404040;">
+      <h3 style="margin:0 0 16px 0; color:#ececec;">Edit Document Subject</h3>
+      <p style="margin:0 0 12px 0; font-size:13px; color:#8e8ea0;">Select one or more subjects for this document:</p>
+      <select id="subject-select" multiple size="8" style="width:100%; padding:8px; background:#1a1a1a; color:#ececec; border:1px solid #404040; border-radius:6px; font-size:13px;">
+        ${subjectOptions}
+      </select>
+      <p style="margin:8px 0 16px 0; font-size:11px; color:#8e8ea0;">Hold Ctrl/Cmd to select multiple</p>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:8px 16px; background:#3a3a3a; color:#ececec; border:none; border-radius:6px; cursor:pointer; transition:background 0.2s;" onmouseover="this.style.background='#4a4a4a'" onmouseout="this.style.background='#3a3a3a'">Cancel</button>
+        <button id="save-subject-btn" style="padding:8px 16px; background:#10a37f; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; transition:background 0.2s;" onmouseover="this.style.background='#0d8a6c'" onmouseout="this.style.background='#10a37f'">Save</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  document.getElementById('save-subject-btn').onclick = async () => {
+    const select = document.getElementById('subject-select');
+    const selected = Array.from(select.selectedOptions).map(opt => opt.value);
+    
+    if (selected.length === 0) {
+      showToast('❌', 'Please select at least one subject', 'error');
+      return;
+    }
+    
+    try {
+      const res = await fetch(`${API}/api/documents/${docId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentToken}`
+        },
+        body: JSON.stringify({ subject: selected })
+      });
+      
+      if (res.ok) {
+        showToast('✅', 'Subject updated', 'success');
+        loadDocuments();
+        modal.remove();
+      } else {
+        const data = await res.json();
+        showToast('❌', data.error || 'Update failed', 'error');
+      }
+    } catch (e) {
+      showToast('❌', 'Connection error', 'error');
+    }
+  };
+  
+  modal.onclick = (e) => {
+    if (e.target === modal) modal.remove();
+  };
 }
 
 // ══════════════════════════════════════════════
@@ -1258,6 +1388,40 @@ function escapeHtml(str) {
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function renderMarkdown(text) {
+  // FIRST: Pre-process ALL LaTeX patterns before markdown parsing
+  // This prevents marked.js from wrapping them in code blocks
+  let latexProtected = text;
+  let counter = 0;
+  const latexStore = {};
+  
+  // Protect display math: $$...$$ (process first, longer delimiter)
+  latexProtected = latexProtected.replace(/\$\$([\s\S]+?)\$\$/g, (match) => {
+    const key = `LATEXBLOCK${counter++}`;
+    latexStore[key] = match;
+    return `<!--${key}-->`;
+  });
+  
+  // Protect display math: \[...\]
+  latexProtected = latexProtected.replace(/\\\[([\s\S]+?)\\\]/g, (match) => {
+    const key = `LATEXBLOCK${counter++}`;
+    latexStore[key] = match;
+    return `<!--${key}-->`;
+  });
+  
+  // Protect inline math: $...$ (single dollar signs, not followed by $)
+  latexProtected = latexProtected.replace(/\$([^\s$][^$]*?[^\s$])\$/g, (match) => {
+    const key = `LATEXBLOCK${counter++}`;
+    latexStore[key] = match;
+    return `<!--${key}-->`;
+  });
+  
+  // Protect inline math: \(...\)
+  latexProtected = latexProtected.replace(/\\\(([^)]+?)\\\)/g, (match) => {
+    const key = `LATEXBLOCK${counter++}`;
+    latexStore[key] = match;
+    return `<!--${key}-->`;
+  });
+  
   // Configure marked options
   marked.setOptions({
     breaks: true,
@@ -1265,9 +1429,46 @@ function renderMarkdown(text) {
     headerIds: false,
     mangle: false
   });
+  
   // Parse markdown and sanitize to prevent XSS
-  const rawHtml = marked.parse(text);
-  return DOMPurify.sanitize(rawHtml);
+  const rawHtml = marked.parse(latexProtected);
+  const sanitized = DOMPurify.sanitize(rawHtml, {
+    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'mfrac', 'annotation'],
+    ADD_ATTR: ['xmlns'],
+    ALLOW_DATA_ATTR: false
+  });
+  
+  // Restore LaTeX blocks
+  let latexRestored = sanitized;
+  Object.keys(latexStore).forEach(key => {
+    latexRestored = latexRestored.replace(`<!--${key}-->`, latexStore[key]);
+  });
+  
+  // Create temporary container to render LaTeX
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = latexRestored;
+  
+  // Render LaTeX with KaTeX if available
+  if (typeof renderMathInElement !== 'undefined') {
+    try {
+      renderMathInElement(tempDiv, {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$', right: '$', display: false},
+          {left: '\\[', right: '\\]', display: true},
+          {left: '\\(', right: '\\)', display: false}
+        ],
+        throwOnError: false,
+        trust: true,
+        // Process LaTeX even inside code blocks (in case some slipped through)
+        ignoredTags: []
+      });
+    } catch (e) {
+      console.warn('LaTeX rendering failed:', e);
+    }
+  }
+  
+  return tempDiv.innerHTML;
 }
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }

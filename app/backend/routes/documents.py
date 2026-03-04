@@ -137,3 +137,41 @@ def get_document_chunks(doc_id: int):
             'filename': doc.filename,
             'chunks': chunks_data
         }), 200
+
+
+# ── PATCH /api/documents/<id> ─────────────────────────────
+@documents_bp.route("/<int:doc_id>", methods=["PATCH"])
+def update_document(doc_id: int):
+    """
+    Update document metadata (e.g., subject).
+    Allows users to manually correct auto-classified subjects.
+    """
+    with get_db_session() as session:
+        doc = session.query(Document).filter_by(id=doc_id).first()
+        if not doc:
+            return jsonify({"error": f"Document {doc_id} not found"}), 404
+        
+        data = request.get_json()
+        
+        if 'subject' in data:
+            new_subject = data['subject']
+            
+            # Support both single subject and array
+            if isinstance(new_subject, str):
+                new_subject = [new_subject]
+            
+            # Validate subjects
+            invalid_subjects = [s for s in new_subject if s not in Config.VALID_SUBJECTS]
+            if invalid_subjects:
+                return jsonify({
+                    "error": f"Invalid subject(s): {', '.join(invalid_subjects)}",
+                    "valid_subjects": Config.VALID_SUBJECTS
+                }), 400
+            
+            doc.subject = new_subject
+            current_app.logger.info(f"Updated document {doc_id} subjects to: {new_subject}")
+        
+        return jsonify({
+            "message": "Document updated successfully",
+            "document": doc.to_dict()
+        }), 200

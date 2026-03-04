@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_path VARCHAR(500) NOT NULL,
     file_type VARCHAR(50), -- e.g., 'pdf', 'docx'
     title TEXT,
-    subject VARCHAR(255), -- e.g., 'Mathematics', 'ML'
+    subject TEXT[], -- Array of subjects, e.g., ['Math', 'Physics']
     upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     chunk_count INTEGER DEFAULT 0
 );

@@ -23,7 +23,7 @@ This project builds a Retrieval-Augmented Generation (RAG) learning assistant th
 - SQLAlchemy 2.0.30 - ORM
 
 **Document Processing:**
-- Unstructured 0.15.7 - Multi-format document parsing (PDF, DOCX, PPTX)
+- Unstructured 0.15.7 - Multi-format document parsing (PDF, DOCX, PPTX, TXT)
 - pdf2image 1.17.0 - PDF rendering
 - Pillow 10.3.0 - Image processing
 

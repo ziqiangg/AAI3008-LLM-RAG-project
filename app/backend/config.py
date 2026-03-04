@@ -80,6 +80,10 @@ SECURITY RULES:
 
 RESPONSE GUIDELINES:
 - Use markdown formatting (headings, lists, code blocks) for clarity.
+- **IMPORTANT**: For mathematical equations and formulas, ALWAYS use LaTeX notation:
+  * Use $$...$$ for display math (centered, on its own line)
+  * Use $...$ for inline math (within text)
+  * Example: The quadratic formula is $$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$
 - Break complex topics into digestible parts.
 - Provide examples from the documents when available.
 - If information seems contradictory across documents, acknowledge this.
@@ -93,6 +97,105 @@ BOUNDARIES:
 - Don't provide complete solutions to assignments, exams, or homework problems.
 
 Remember: Your goal is to foster understanding and learning, not just provide answers."""
+
+    # Subject Classification Configuration
+    SUBJECT_TREE = {
+        "Math": {
+            "topics": {
+                "Algebra": ["Linear Equations", "Quadratic Equations", "Polynomials", "Matrices"],
+                "Calculus": ["Limits", "Derivatives", "Integrals", "Series"],
+                "Geometry": ["Euclidean Geometry", "Trigonometry", "Analytic Geometry"],
+                "Statistics": ["Probability", "Distributions", "Hypothesis Testing"]
+            }
+        },
+        "Computer Science": {
+            "topics": {
+                "Programming": ["Algorithms", "Data Structures", "OOP", "Functional Programming"],
+                "Systems": ["Operating Systems", "Networks", "Databases"],
+                "Theory": ["Complexity Theory", "Automata", "Formal Languages"]
+            }
+        },
+        "Artificial Intelligence": {
+            "topics": {
+                "Machine Learning": ["Supervised Learning", "Unsupervised Learning", "Neural Networks", "Deep Learning"],
+                "NLP": ["Text Processing", "Language Models", "Embeddings"],
+                "Computer Vision": ["Image Processing", "Object Detection", "CNNs"]
+            }
+        },
+        "Physics": {
+            "topics": {
+                "Mechanics": ["Kinematics", "Dynamics", "Energy", "Momentum"],
+                "Electromagnetism": ["Electric Fields", "Magnetic Fields", "Circuits"],
+                "Thermodynamics": ["Heat Transfer", "Entropy", "Laws of Thermodynamics"],
+                "Quantum": ["Wave-Particle Duality", "Uncertainty Principle"]
+            }
+        },
+        "Chemistry": {
+            "topics": {
+                "Organic": ["Hydrocarbons", "Functional Groups", "Reactions"],
+                "Inorganic": ["Periodic Table", "Bonding", "Coordination Compounds"],
+                "Physical": ["Thermochemistry", "Kinetics", "Equilibrium"]
+            }
+        },
+        "Biology": {
+            "topics": {
+                "Cell Biology": ["Cell Structure", "Organelles", "Cell Division"],
+                "Genetics": ["DNA", "RNA", "Inheritance", "Mutations"],
+                "Ecology": ["Ecosystems", "Food Chains", "Biodiversity"]
+            }
+        },
+        "Language Learning": {
+            "topics": {
+                "Grammar": ["Syntax", "Morphology", "Phonology"],
+                "Vocabulary": ["Word Formation", "Idioms", "Collocations"],
+                "Skills": ["Reading", "Writing", "Speaking", "Listening"]
+            }
+        },
+        "Geography": {
+            "topics": {
+                "Physical": ["Landforms", "Climate", "Ecosystems"],
+                "Human": ["Population", "Urbanization", "Migration"],
+                "Regional": ["Continents", "Countries", "Mapping"]
+            }
+        },
+        "Economics": {
+            "topics": {
+                "Microeconomics": ["Supply Demand", "Market Structures", "Elasticity"],
+                "Macroeconomics": ["GDP", "Inflation", "Unemployment", "Fiscal Policy"],
+                "Finance": ["Banking", "Investment", "Markets"]
+            }
+        },
+        "Social Studies": {
+            "topics": {
+                "History": ["Ancient", "Modern", "Contemporary"],
+                "Politics": ["Government Systems", "Democracy", "International Relations"],
+                "Sociology": ["Social Structures", "Culture", "Institutions"]
+            }
+        },
+        "Computer Systems": {
+            "topics": {
+                "Architecture": ["CPU Design", "Memory Hierarchy", "I/O Systems"],
+                "Networking": ["Protocols", "TCP/IP", "Routing"],
+                "Security": ["Cryptography", "Authentication", "Vulnerabilities"]
+            }
+        },
+        "General": {
+            "topics": {
+                "Miscellaneous": ["Uncategorized"]
+            }
+        }
+    }
+    
+    # Flattened list for quick validation
+    VALID_SUBJECTS = [
+        "Math", "Computer Science", "Artificial Intelligence", "Physics", 
+        "Chemistry", "Biology", "Language Learning", "Geography", 
+        "Economics", "Social Studies", "Computer Systems", "General"
+    ]
+    
+    # Classification thresholds
+    SUBJECT_SIMILARITY_THRESHOLD = 0.25  # Minimum similarity for subject classification (lowered for better recall)
+    TOPIC_SIMILARITY_THRESHOLD = 0.30    # Minimum similarity for topic classification
 
 
 class DevelopmentConfig(Config):

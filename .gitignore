@@ -215,6 +215,7 @@ uploads/
 *.pdf
 *.docx
 *.pptx
+*.txt
 
 # Database backups
 backup_*.sql
