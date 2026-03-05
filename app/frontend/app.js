@@ -435,7 +435,58 @@ async function deleteSession(sessionId, e) {
 function triggerSidebarUpload() {
   document.getElementById('sidebar-file-input').click();
 }
+let pendingLinks = [];
 
+function addLink() {
+  const inp = document.getElementById("link-input");
+  const url = (inp.value || "").trim();
+  if (!url) return;
+  pendingLinks.push(url);
+  inp.value = "";
+  renderLinkList();
+}
+
+function removeLink(i) {
+  pendingLinks.splice(i, 1);
+  renderLinkList();
+}
+
+function renderLinkList() {
+  const el = document.getElementById("link-list");
+  if (!el) return;
+  el.innerHTML = pendingLinks.map((u, i) => `
+    <div class="link-item">
+      <span>${escapeHtml(u)}</span>
+      <button onclick="removeLink(${i})">✕</button>
+    </div>
+  `).join("");
+}
+async function ingestLinks() {
+   if (!currentUser) {
+    showToast("❌", "Please log in first.", "error");
+    return;
+  }
+  if (!pendingLinks.length) {
+    showToast("🔗", "No links added.", "warning");
+    return;
+  }
+  showToast("⏳", "Ingesting links…", "");
+
+  const res = await fetch(`${API}/api/links/ingest`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ urls: pendingLinks, user_id: currentUser.id })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    showToast("❌", data.error || "Link ingest failed", "error");
+    return;
+  }
+  showToast("✅", `Ingested ${data.ingested.length} link(s)`, "success");
+  pendingLinks = [];
+  renderLinkList();
+  loadDocuments(); // refresh sidebar
+}
 async function onSidebarFileSelected(event) {
   const file = event.target.files[0];
   if (!file) return;

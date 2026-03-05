@@ -32,18 +32,20 @@ class Config:
 
     # Strict allowlist of trusted domains (edit as you like)
     WEB_TRUSTED_DOMAINS = {
-        "docs.python.org",
+        "aws.amazon.com",
+        "docs.aws.amazon.com",
+        "cloud.google.com",
+        "learn.microsoft.com",
         "developer.mozilla.org",
+        "docs.python.org",
         "github.com",
         "raw.githubusercontent.com",
         "geeksforgeeks.org",
-        "pypi.org",
         "arxiv.org",
-        "openai.com",
-        "cloud.google.com",
-        "aws.amazon.com",
     }
-
+    LINK_CHUNK_MAX_CHARS = 2200
+    LINK_CHUNK_MIN_CHARS = 350
+    LINK_LONG_SECTION_SPLIT_SIZE = 1200
     # Search provider (recommended: Serper). If key missing => web lane returns empty.
     SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
     SERPER_ENDPOINT = "https://google.serper.dev/search"

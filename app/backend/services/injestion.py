@@ -847,3 +847,80 @@ def run_ingestion_pipeline(
         print("LEN:", len(c.page_content))
 
     return doc
+def _split_long_text(text: str, chunk_size: int) -> list[str]:
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=0,
+        separators=["\n\n", "\n", " ", ""]
+    )
+    return splitter.split_text(text or "")
+
+
+def chunk_sections_to_db(
+    db_session,
+    document_id: int,
+    sections: list[dict],
+    source_metadata: dict,
+) -> int:
+    """
+    Hybrid:
+    - each heading-section becomes a chunk
+    - if a section is too long, split within the section (fallback)
+    Stores section title in chunk_metadata for nicer citations.
+    """
+    emb = get_embeddings()
+    order = 1
+    count = 0
+
+    max_chars = getattr(Config, "LINK_CHUNK_MAX_CHARS", 2200)
+    min_chars = getattr(Config, "LINK_CHUNK_MIN_CHARS", 350)
+    long_split = getattr(Config, "LINK_LONG_SECTION_SPLIT_SIZE", 1200)
+
+    for sec in sections:
+        title = (sec.get("title") or "Section").strip()
+        text = (sec.get("text") or "").strip()
+        if not text:
+            continue
+
+        # If section is huge, split inside it (still “within section”)
+        parts = [text] if len(text) <= max_chars else _split_long_text(text, long_split)
+
+        # Merge tiny fragments within the section to avoid micro-chunks
+        merged_parts = []
+        buf = ""
+        for p in parts:
+            if not buf:
+                buf = p
+            elif len(buf) + len(p) + 2 <= max_chars:
+                buf = buf + "\n\n" + p
+            else:
+                merged_parts.append(buf)
+                buf = p
+        if buf:
+            merged_parts.append(buf)
+
+        for chunk_text in merged_parts:
+            chunk_text = chunk_text.strip()
+            if len(chunk_text) < min_chars:
+                continue
+
+            vec = emb.embed_query(chunk_text)
+
+            md = dict(source_metadata or {})
+            md.update({
+                "source_type": "link",
+                "section_title": title
+            })
+
+            dc = DocumentChunk(
+                document_id=document_id,
+                chunk_order=order,
+                content=chunk_text,
+                embedding=vec,
+                chunk_metadata=md
+            )
+            db_session.add(dc)
+            order += 1
+            count += 1
+
+    return count

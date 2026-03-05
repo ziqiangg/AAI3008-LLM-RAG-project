@@ -49,7 +49,16 @@
   <div id="docs-list">
     <div style="font-size:12px; color:var(--text-muted); padding:8px 4px">No documents yet</div>
   </div>
+  <div class="sidebar-section-title">Link Sources</div>
 
+  <div class="link-add-row">
+    <input id="link-input" type="text" placeholder="Paste a trusted https:// link…" />
+    <button id="add-link-btn" onclick="addLink()">Add</button>
+  </div>
+
+  <div id="link-list" class="link-list"></div>
+
+<button id="ingest-links-btn" onclick="ingestLinks()">Ingest Links</button>
   <div class="sidebar-footer">
     Backend&nbsp;<span id="api-url">localhost:5000</span>
   </div>
