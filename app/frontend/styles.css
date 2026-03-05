@@ -68,6 +68,7 @@ body {
   font-size: 11px; text-transform: uppercase;
   letter-spacing: 0.08em; color: var(--text-muted);
   padding: 10px 4px 4px;
+  display: flex; align-items: center; justify-content: space-between;
 }
 
 #docs-list {
@@ -98,6 +99,99 @@ body {
 
 .doc-item:hover .doc-del { opacity: 1; }
 .doc-item .doc-del:hover { color: var(--danger); }
+
+.doc-item .doc-move {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 12px;
+  padding: 0 2px; opacity: 0; transition: opacity 0.15s;
+}
+.doc-item:hover .doc-move { opacity: 1; }
+
+#add-folder-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 13px;
+  padding: 2px 4px; border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+#add-folder-btn:hover { color: var(--text-primary); background: var(--bg-input); }
+
+/* ── Folder Groups ── */
+.folder-group {
+  margin-bottom: 2px;
+}
+
+.folder-header {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 8px; border-radius: 6px;
+  font-size: 12px; color: var(--text-primary);
+  cursor: pointer; transition: background 0.15s;
+  user-select: none;
+}
+.folder-header:hover { background: var(--bg-input); }
+
+.folder-chevron {
+  font-size: 10px; color: var(--text-muted);
+  width: 12px; text-align: center; flex-shrink: 0;
+}
+
+.folder-icon { font-size: 13px; flex-shrink: 0; }
+
+.folder-name {
+  flex: 1; font-weight: 600; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.folder-count {
+  font-size: 10px; color: var(--text-muted);
+  background: var(--bg-input); padding: 1px 6px;
+  border-radius: 8px; flex-shrink: 0;
+}
+
+.folder-action {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 11px;
+  padding: 0 2px; opacity: 0; transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.folder-header:hover .folder-action { opacity: 1; }
+.folder-action.folder-del:hover { color: var(--danger); }
+
+.folder-contents {
+  padding-left: 14px;
+}
+
+.folder-empty {
+  font-size: 11px; color: var(--text-muted);
+  padding: 4px 10px; font-style: italic;
+}
+
+.sidebar-section-divider {
+  height: 1px; background: var(--border);
+  margin: 6px 4px;
+}
+
+/* ── Move-to-Folder Dropdown ── */
+.folder-move-menu {
+  position: fixed; z-index: 10000;
+  background: var(--bg-sidebar); border: 1px solid var(--border);
+  border-radius: 8px; min-width: 180px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  overflow: hidden;
+}
+
+.folder-move-header {
+  padding: 8px 12px; font-size: 11px; font-weight: 600;
+  color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 0.06em; border-bottom: 1px solid var(--border);
+}
+
+.folder-move-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; font-size: 12px;
+  color: var(--text-primary); cursor: pointer;
+  transition: background 0.15s;
+}
+.folder-move-option:hover { background: var(--bg-input); }
 
 .sidebar-footer {
   border-top: 1px solid var(--border);

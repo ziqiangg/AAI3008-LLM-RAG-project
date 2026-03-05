@@ -43,8 +43,10 @@
     onchange="onSidebarFileSelected(event)"
   >
 
-
-  <div class="sidebar-section-title">Uploaded Documents</div>
+  <div class="sidebar-section-title">
+    Uploaded Documents
+    <button id="add-folder-btn" onclick="createFolder()" title="New folder">📁+</button>
+  </div>
   <div id="docs-list">
     <div style="font-size:12px; color:var(--text-muted); padding:8px 4px">No documents yet</div>
   </div>

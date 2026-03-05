@@ -14,12 +14,173 @@ let currentToken   = localStorage.getItem('rag_token') || null;
 let currentSession = null;      // active session id
 let toastTimeout   = null;      // toast notification timer
 let stageTimer     = null;      // loading stage progress timer
+let folders        = [];        // user-defined document folders
+let expandedFolders = JSON.parse(localStorage.getItem('rag_expanded_folders') || '{}'); // folder expand/collapse state
 
 // ── Bootstrap ─────────────────────────────────
 window.addEventListener('load', () => {
   loadDocuments();
   if (currentToken) restoreSession();
 });
+
+// ══════════════════════════════════════════════
+// FOLDERS
+// ══════════════════════════════════════════════
+async function loadFolders() {
+  if (!currentToken) { folders = []; return; }
+  try {
+    const res = await authFetch('/api/folders/');
+    const data = await res.json();
+    folders = data.folders || [];
+  } catch (e) {
+    console.warn('Could not load folders', e);
+    folders = [];
+  }
+}
+
+async function createFolder() {
+  if (!currentUser) {
+    showToast('❌', 'Please log in to create folders.', 'error');
+    return;
+  }
+  const name = prompt('Enter folder name:');
+  if (!name || !name.trim()) return;
+
+  try {
+    const res = await authFetch('/api/folders/', {
+      method: 'POST',
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('📁', `Folder "${data.folder.name}" created.`, 'success');
+      expandedFolders[data.folder.id] = true;
+      saveExpandedFolders();
+      await loadFolders();
+      loadDocuments();
+    } else {
+      showToast('❌', data.error || 'Could not create folder.', 'error');
+    }
+  } catch {
+    showToast('❌', 'Backend unreachable.', 'error');
+  }
+}
+
+async function renameFolder(folderId, currentName) {
+  const name = prompt('Rename folder:', currentName);
+  if (!name || !name.trim() || name.trim() === currentName) return;
+
+  try {
+    const res = await authFetch(`/api/folders/${folderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    if (res.ok) {
+      showToast('✅', 'Folder renamed.', 'success');
+      await loadFolders();
+      loadDocuments();
+    } else {
+      const data = await res.json();
+      showToast('❌', data.error || 'Rename failed.', 'error');
+    }
+  } catch {
+    showToast('❌', 'Backend unreachable.', 'error');
+  }
+}
+
+async function deleteFolder(folderId, folderName, e) {
+  if (e) e.stopPropagation();
+  if (!confirm(`Delete folder "${folderName}"?\nDocuments inside will be moved out (not deleted).`)) return;
+
+  try {
+    const res = await authFetch(`/api/folders/${folderId}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('🗑️', `Folder "${folderName}" deleted.`, 'success');
+      delete expandedFolders[folderId];
+      saveExpandedFolders();
+      await loadFolders();
+      loadDocuments();
+    } else {
+      showToast('❌', 'Delete failed.', 'error');
+    }
+  } catch {
+    showToast('❌', 'Backend unreachable.', 'error');
+  }
+}
+
+function toggleFolder(folderId) {
+  expandedFolders[folderId] = !expandedFolders[folderId];
+  saveExpandedFolders();
+  // Re-render docs list without re-fetching
+  renderDocsWithFolders(window._allDocs || []);
+}
+
+function saveExpandedFolders() {
+  localStorage.setItem('rag_expanded_folders', JSON.stringify(expandedFolders));
+}
+
+async function moveDocToFolder(docId, folderId) {
+  try {
+    const res = await fetch(`${API}/api/documents/${docId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {})
+      },
+      body: JSON.stringify({ folder_id: folderId }),
+    });
+    if (res.ok) {
+      showToast('✅', folderId ? 'Document moved to folder.' : 'Document removed from folder.', 'success');
+      loadDocuments();
+    } else {
+      const data = await res.json();
+      showToast('❌', data.error || 'Move failed.', 'error');
+    }
+  } catch {
+    showToast('❌', 'Backend unreachable.', 'error');
+  }
+}
+
+function showMoveToFolderMenu(docId, docFilename, e) {
+  e.stopPropagation();
+
+  // Remove existing menu if any
+  document.querySelectorAll('.folder-move-menu').forEach(el => el.remove());
+
+  const menu = document.createElement('div');
+  menu.className = 'folder-move-menu';
+
+  // "No folder" option
+  let options = `<div class="folder-move-option" onclick="moveDocToFolder(${docId}, null); this.closest('.folder-move-menu').remove();">
+    <span>📄</span> <span>No folder</span>
+  </div>`;
+
+  // Folder options
+  folders.forEach(f => {
+    options += `<div class="folder-move-option" onclick="moveDocToFolder(${docId}, ${f.id}); this.closest('.folder-move-menu').remove();">
+      <span>📁</span> <span>${escapeHtml(f.name)}</span>
+    </div>`;
+  });
+
+  menu.innerHTML = `<div class="folder-move-header">Move to folder</div>${options}`;
+
+  // Position near the button
+  const btn = e.currentTarget;
+  const rect = btn.getBoundingClientRect();
+  menu.style.top = rect.bottom + 2 + 'px';
+  menu.style.left = rect.left + 'px';
+
+  document.body.appendChild(menu);
+
+  // Close on outside click
+  const closeMenu = (ev) => {
+    if (!menu.contains(ev.target)) {
+      menu.remove();
+      document.removeEventListener('click', closeMenu);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', closeMenu), 0);
+}
 
 // ══════════════════════════════════════════════
 // HEALTH CHECK (Optional - removed from bootstrap)
@@ -179,6 +340,7 @@ async function restoreSession() {
       currentUser = data.user;
       updateAuthButton();
       loadSessions();
+      loadDocuments(); // reload with folders now that we're authenticated
     } else {
       logout();
     }
@@ -431,51 +593,115 @@ async function uploadDocumentFromSidebar(file) {
 
 async function loadDocuments() {
   try {
+    // Load folders first if user is logged in
+    await loadFolders();
+
     const res  = await fetch(`${API}/api/documents/`);
     const data = await res.json();
-    const list = document.getElementById('docs-list');
     const docs = data.documents || data;
 
     // Build maps for quick lookup by Sources click
     window._docsById = {};
     window._docIdByFilename = {};
+    window._allDocs = docs || [];
     (docs || []).forEach(d => {
       window._docsById[d.id] = d;
       if (d.filename) window._docIdByFilename[d.filename] = d.id;
     });
 
-    if (!docs?.length) {
-      list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
-      return;
-    }
-
-    list.innerHTML = docs.map(doc => {
-      // Handle subject as array or fallback to General
-      const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : ['General']);
-      const primarySubject = subjects[0] || 'General';
-      const subjectColor = SUBJECT_COLORS[primarySubject] || SUBJECT_COLORS['General'];
-      
-      // Create subject badge with click-to-edit
-      const subjectBadge = `<span class="subject-badge" 
-        style="background:${subjectColor}20; color:${subjectColor}; border:1px solid ${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; margin-top:2px; display:inline-block;" 
-        onclick="event.stopPropagation(); editDocumentSubject(${doc.id}, ${JSON.stringify(subjects).replace(/"/g, '&quot;')})" 
-        title="Click to edit subject">${primarySubject}${subjects.length > 1 ? ` +${subjects.length-1}` : ''}</span>`;
-      
-      return `
-      <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
-        <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:6px;">
-            <span class="doc-icon">📄</span>
-            <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
-          </div>
-          ${subjectBadge}
-        </div>
-        <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
-      </div>`;
-    }).join('');
+    renderDocsWithFolders(docs || []);
   } catch(e) {
     console.warn('Could not load documents', e);
   }
+}
+
+function renderDocItem(doc) {
+  const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : ['General']);
+  const primarySubject = subjects[0] || 'General';
+  const subjectColor = SUBJECT_COLORS[primarySubject] || SUBJECT_COLORS['General'];
+
+  const subjectBadge = `<span class="subject-badge"
+    style="background:${subjectColor}20; color:${subjectColor}; border:1px solid ${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; margin-top:2px; display:inline-block;"
+    onclick="event.stopPropagation(); editDocumentSubject(${doc.id}, ${JSON.stringify(subjects).replace(/"/g, '&quot;')})"
+    title="Click to edit subject">${primarySubject}${subjects.length > 1 ? ` +${subjects.length-1}` : ''}</span>`;
+
+  const moveBtn = currentUser ? `<button class="doc-move" onclick="showMoveToFolderMenu(${doc.id}, '${escapeHtml(doc.filename)}', event)" title="Move to folder">📁</button>` : '';
+
+  return `
+  <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
+    <div style="flex:1; min-width:0;">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span class="doc-icon">📄</span>
+        <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+      </div>
+      ${subjectBadge}
+    </div>
+    ${moveBtn}
+    <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
+  </div>`;
+}
+
+function renderDocsWithFolders(docs) {
+  const list = document.getElementById('docs-list');
+
+  if (!docs.length && !folders.length) {
+    list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
+    return;
+  }
+
+  // Group docs: by folder and unfiled
+  const docsByFolder = {};
+  const unfiledDocs = [];
+
+  docs.forEach(doc => {
+    if (doc.folder_id) {
+      if (!docsByFolder[doc.folder_id]) docsByFolder[doc.folder_id] = [];
+      docsByFolder[doc.folder_id].push(doc);
+    } else {
+      unfiledDocs.push(doc);
+    }
+  });
+
+  let html = '';
+
+  // Render folders
+  folders.forEach(folder => {
+    const isExpanded = expandedFolders[folder.id] !== false; // default expanded
+    const folderDocs = docsByFolder[folder.id] || [];
+    const chevron = isExpanded ? '▾' : '▸';
+    const docCount = folderDocs.length;
+
+    html += `
+    <div class="folder-group">
+      <div class="folder-header" onclick="toggleFolder(${folder.id})">
+        <span class="folder-chevron">${chevron}</span>
+        <span class="folder-icon">📁</span>
+        <span class="folder-name" title="${escapeHtml(folder.name)}">${escapeHtml(folder.name)}</span>
+        <span class="folder-count">${docCount}</span>
+        <button class="folder-action" onclick="event.stopPropagation(); renameFolder(${folder.id}, '${escapeHtml(folder.name)}')" title="Rename">✏️</button>
+        <button class="folder-action folder-del" onclick="deleteFolder(${folder.id}, '${escapeHtml(folder.name)}', event)" title="Delete folder">✕</button>
+      </div>
+      ${isExpanded ? `<div class="folder-contents">${
+        folderDocs.length
+          ? folderDocs.map(doc => renderDocItem(doc)).join('')
+          : '<div class="folder-empty">Empty folder</div>'
+      }</div>` : ''}
+    </div>`;
+  });
+
+  // Render unfiled docs
+  if (unfiledDocs.length) {
+    if (folders.length) {
+      html += `<div class="sidebar-section-divider"></div>`;
+    }
+    html += unfiledDocs.map(doc => renderDocItem(doc)).join('');
+  }
+
+  if (!html) {
+    html = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
+  }
+
+  list.innerHTML = html;
 }
 
 // Preview as segmented chunk cards + highlight the matched chunk

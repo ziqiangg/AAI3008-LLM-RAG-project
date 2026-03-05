@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 import os
 
-from app.backend.models import Document, DocumentChunk
+from app.backend.models import Document, DocumentChunk, Folder
 from app.backend.database import get_db_session
 from app.backend.config import Config
 from app.backend.services.injestion import run_ingestion_pipeline  # adjust path if needed
@@ -153,11 +153,11 @@ def update_document(doc_id: int):
         
         if 'subject' in data:
             new_subject = data['subject']
-            
+
             # Support both single subject and array
             if isinstance(new_subject, str):
                 new_subject = [new_subject]
-            
+
             # Validate subjects
             invalid_subjects = [s for s in new_subject if s not in Config.VALID_SUBJECTS]
             if invalid_subjects:
@@ -165,10 +165,19 @@ def update_document(doc_id: int):
                     "error": f"Invalid subject(s): {', '.join(invalid_subjects)}",
                     "valid_subjects": Config.VALID_SUBJECTS
                 }), 400
-            
+
             doc.subject = new_subject
             current_app.logger.info(f"Updated document {doc_id} subjects to: {new_subject}")
-        
+
+        if 'folder_id' in data:
+            folder_id = data['folder_id']
+            if folder_id is not None:
+                folder = session.query(Folder).filter_by(id=folder_id).first()
+                if not folder:
+                    return jsonify({"error": f"Folder {folder_id} not found"}), 404
+            doc.folder_id = folder_id
+            current_app.logger.info(f"Moved document {doc_id} to folder {folder_id}")
+
         return jsonify({
             "message": "Document updated successfully",
             "document": doc.to_dict()
