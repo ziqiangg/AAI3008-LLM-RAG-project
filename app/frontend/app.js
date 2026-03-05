@@ -563,7 +563,14 @@ async function deleteDoc(docId, e) {
   if (!confirm('Delete this document and all its chunks?')) return;
   try {
     const res = await fetch(`${API}/api/documents/${docId}`, { method: 'DELETE' });
-    if (res.ok) { showToast('🗑️', 'Document deleted.', 'success'); loadDocuments(); }
+    if (res.ok) { 
+      showToast('🗑️', 'Document deleted.', 'success'); 
+      loadDocuments();
+      // Remove only sources from the deleted document, keep others
+      const currentSources = window._lastSources || [];
+      const filteredSources = currentSources.filter(s => s.document_id !== docId);
+      renderSources(filteredSources.length > 0 ? filteredSources : null);
+    }
     else { showToast('❌', 'Delete failed.', 'error'); }
   } catch { showToast('❌', 'Backend unreachable.', 'error'); }
 }
