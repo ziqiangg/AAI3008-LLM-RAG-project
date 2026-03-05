@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- Table: documents
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     filename VARCHAR(255) NOT NULL,
     file_path VARCHAR(500) NOT NULL,
     file_type VARCHAR(50), -- e.g., 'pdf', 'docx'
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS documents (
 -- Table: sessions
 CREATE TABLE IF NOT EXISTS sessions (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id),
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     title VARCHAR(255) DEFAULT 'New Chat',
     document_ids INTEGER[], -- Array of document IDs
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS messages (
 -- Table: document_chunks
 CREATE TABLE IF NOT EXISTS document_chunks (
     id SERIAL PRIMARY KEY,
-    document_id INTEGER REFERENCES documents(id),
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
     chunk_order INTEGER NOT NULL,
     content TEXT NOT NULL,
     embedding VECTOR(384), -- Dimension 384 for All-MiniLM-L6-v2

@@ -46,7 +46,7 @@ class Document(Base):
     __tablename__ = 'documents'
     
     id          = Column(Integer, primary_key=True)
-    user_id     = Column(Integer, ForeignKey('users.id'))
+    user_id     = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     filename    = Column(String(255), nullable=False)
     file_path   = Column(String(500), nullable=False)
     file_type   = Column(String(50))  # e.g., 'pdf', 'docx'
@@ -82,7 +82,7 @@ class Session(Base):
     __tablename__ = 'sessions'
     
     id              = Column(Integer, primary_key=True)
-    user_id         = Column(Integer, ForeignKey('users.id'))
+    user_id         = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     title           = Column(String(255), default='New Chat')
     document_ids    = Column(ARRAY(Integer))  # Array of document IDs
     created_at      = Column(TIMESTAMP, default=datetime.utcnow)
@@ -109,7 +109,7 @@ class Session(Base):
 class Message(Base):                                             
     __tablename__ = 'messages'
     id         = Column(Integer, primary_key=True)
-    session_id = Column(Integer, ForeignKey('sessions.id'), nullable=False)
+    session_id = Column(Integer, ForeignKey('sessions.id', ondelete='CASCADE'), nullable=False)
     role       = Column(String(20), nullable=False)   # 'user' | 'assistant'
     content    = Column(Text, nullable=False)
     sources    = Column(JSONB)                        # retrieved chunk references
@@ -130,7 +130,7 @@ class DocumentChunk(Base):
     __tablename__ = 'document_chunks'
     
     id = Column(Integer, primary_key=True)
-    document_id = Column(Integer, ForeignKey('documents.id'))
+    document_id = Column(Integer, ForeignKey('documents.id', ondelete='CASCADE'))
     chunk_order = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
     embedding = Column(Vector(384))  # 384-dimensional vector for All-MiniLM-L6-v2

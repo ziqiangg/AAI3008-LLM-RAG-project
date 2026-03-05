@@ -77,7 +77,7 @@ def upload_document():
 @documents_bp.route("/<int:doc_id>", methods=["DELETE"])
 def delete_document(doc_id: int):
     """
-    Delete a document and its chunks, and remove the underlying file.
+    Delete a document and its chunks (via CASCADE), and remove the underlying file.
     """
     with get_db_session() as session:
         doc = session.query(Document).filter_by(id=doc_id).first()
@@ -86,9 +86,7 @@ def delete_document(doc_id: int):
 
         file_path = doc.file_path
 
-        # If you don't have ON DELETE CASCADE on FK, explicitly delete chunks:
-        session.query(DocumentChunk).filter_by(document_id=doc_id).delete()
-
+        # Chunks are deleted automatically via ON DELETE CASCADE
         session.delete(doc)
         # session.commit() is handled by get_db_session context manager
 

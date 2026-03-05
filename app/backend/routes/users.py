@@ -92,3 +92,33 @@ def update_me():
             user.email = data['email'].strip().lower()
         db.commit()
         return jsonify({'user': user.to_dict()}), 200
+
+
+@users_bp.route('/me', methods=['DELETE'])
+@jwt_required()
+def delete_me():
+    """
+    Delete the authenticated user account.
+    Cascades to delete all documents, sessions, chunks, and messages.
+    Does NOT delete uploaded files from disk - consider adding cleanup if needed.
+    """
+    user_id = int(get_jwt_identity())
+    with get_db() as db:
+        user = db.query(User).filter_by(id=user_id).first()
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        # Could optionally delete all uploaded files here
+        # from app.backend.models import Document
+        # import os
+        # docs = db.query(Document).filter_by(user_id=user_id).all()
+        # for doc in docs:
+        #     if doc.file_path and os.path.exists(doc.file_path):
+        #         try:
+        #             os.remove(doc.file_path)
+        #         except OSError:
+        #             pass
+        
+        db.delete(user)  # Cascades to documents, sessions (and their children)
+        db.commit()
+        return jsonify({'message': 'User account deleted successfully'}), 200
