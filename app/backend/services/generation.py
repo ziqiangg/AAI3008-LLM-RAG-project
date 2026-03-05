@@ -172,7 +172,8 @@ def generate_answer(
     question: str,
     context_chunks: List[Dict],
     conversation_history: Optional[List[Dict]] = None,
-    subject_context: Optional[Dict] = None  # NEW parameter
+    subject_context: Optional[Dict] = None,  # NEW parameter
+    language_instruction: str = ""
 ) -> Dict:
     """
     Generate an answer using Gemini API based on context and conversation history.
@@ -214,6 +215,8 @@ def generate_answer(
     if subject_context:
         subject_guidance = build_subject_guidance(subject_context)
         system_prompt += subject_guidance
+
+    system_prompt += language_instruction
 
     # Step 5.2: stronger citation + priority + safety rules
     citation_rules = """

@@ -17,6 +17,11 @@ print(">>> LOADED query.py from:", os.path.abspath(__file__), flush=True)
 # NEW: optional web lane (trusted-only)
 # You will create this module in Step 2:
 # app/backend/services/web_retrieval.py
+from app.backend.services.translation import (
+    detect_language,
+    translate_to_english,
+    get_language_instruction
+)
 
 query_bp = Blueprint('query', __name__)
 logger = logging.getLogger(__name__)
@@ -78,7 +83,14 @@ def ask_question():
 
         with get_db_session() as db:
             conversation_history = []
-
+            # ═══════════════════════════════════════════════════════════
+            # DETECT LANGUAGE (For multilingual support)
+            # ═══════════════════════════════════════════════════════════
+            lang_info = detect_language(question)
+            detected_lang_code = lang_info['code']
+            detected_lang_name = lang_info['name']
+            logger.info(f"[Query] Detected language: {detected_lang_code} ({detected_lang_name})")
+            
             # ═══════════════════════════════════════════════════════════
             # 2. RETRIEVE SESSION & CONVERSATION HISTORY
             # ═══════════════════════════════════════════════════════════
@@ -121,10 +133,18 @@ def ask_question():
             logger.info(f"[Query] Web enabled: {web_enabled} (toggle={web_toggle}, explicit={web_explicit})")
 
             # ═══════════════════════════════════════════════════════════
+            # TRANSLATE TO ENGLISH FOR EMBEDDING/RETRIEVAL IF QUERY NOT IN ENGLISH
+            # ═══════════════════════════════════════════════════════════
+            query_for_retrieval = question
+            if not lang_info['is_english']:
+                query_for_retrieval = translate_to_english(question, source_lang=detected_lang_code)
+                logger.info(f"[Query] Translated question for retrieval: '{query_for_retrieval[:50]}...'")
+            
+            # ═══════════════════════════════════════════════════════════
             # 3. EMBED QUESTION
             # ═══════════════════════════════════════════════════════════
             embeddings_model = get_embeddings()
-            question_embedding = embeddings_model.embed_query(question)
+            question_embedding = embeddings_model.embed_query(query_for_retrieval)
             logger.info(f"[Query] Question embedded: {len(question_embedding)} dimensions")
 
             # ═══════════════════════════════════════════════════════════
@@ -197,8 +217,9 @@ def ask_question():
             # Final context: DOCS FIRST always, then WEB
             final_context_chunks = reranked_doc_chunks + reranked_web_chunks
 
+            
             # ═══════════════════════════════════════════════════════════
-            # 6. GENERATE ANSWER
+            # 6. SUBJECT CLASSIFICATION
             # ═══════════════════════════════════════════════════════════
             subject_context = classification.extract_subject_context(final_context_chunks)
             logger.info(
@@ -206,11 +227,23 @@ def ask_question():
                 f"(confidence: {subject_context['dominant_confidence']:.2f})"
             )
 
+            # ═══════════════════════════════════════════════════════════
+            # LANGUAGE INSTRUCTION FOR GEMINI PROMPT
+            # ═══════════════════════════════════════════════════════════
+            language_instruction = get_language_instruction(
+                lang_code=detected_lang_code,
+                lang_name=detected_lang_name
+            )
+
+            # ═══════════════════════════════════════════════════════════
+            # GENERATE ANSWER IN USER'S LANGUAGE
+            # ═══════════════════════════════════════════════════════════
             result = generation.generate_answer(
                 question=question,
                 context_chunks=final_context_chunks,
                 conversation_history=conversation_history,
-                subject_context=subject_context
+                subject_context=subject_context,
+                language_instruction=language_instruction
             )
 
             answer = result['answer']
@@ -270,6 +303,10 @@ def ask_question():
                 'answer': answer,
                 'sources': sources,
                 'session_id': session_id,
+                'detected_language': {
+                    'code': detected_lang_code,
+                    'name': detected_lang_name
+                },
                 'metadata': {
                     'model': result['model_used'],
                     'num_chunks_retrieved': len(retrieved_chunks),
