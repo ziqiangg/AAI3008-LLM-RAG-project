@@ -194,7 +194,14 @@ def generate_answer(
     # Format context and history
     formatted_context = format_context(context_chunks)
     formatted_history = ""
-
+    web_in_context = any((c.get("metadata") or {}).get("source_type") == "web" for c in context_chunks)
+    web_override = ""
+    if web_in_context:
+        web_override = (
+            "\nIMPORTANT: Web results HAVE BEEN PROVIDED in the context. "
+            "Do NOT say you cannot browse/search the web. "
+            "You must answer using the provided WEB context and cite it.\n"
+        )
     if conversation_history and len(conversation_history) > 0:
         formatted_history = (
             "\n\n=== PREVIOUS CONVERSATION ===\n"
@@ -226,7 +233,7 @@ CITATION + PRIORITY RULES:
 {formatted_history}
 === CURRENT QUESTION ===
 {question}
-
+{web_override}
 Please provide a comprehensive answer based on the context above.
 {citation_rules}
 """

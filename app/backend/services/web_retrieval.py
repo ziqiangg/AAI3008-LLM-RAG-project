@@ -51,9 +51,10 @@ def _extract_text(html: str) -> str:
 
 
 def fetch_page_text(url: str) -> str:
+    url = normalize_url(url)
     if not is_trusted_url(url):
         return ""
-
+    
     resp = requests.get(
         url,
         timeout=Config.WEB_TIMEOUT_S,
@@ -72,16 +73,6 @@ def fetch_page_text(url: str) -> str:
 
 
 def serper_search(query: str):
-    print(">>> serper_search() CALLED, key present:", bool(Config.SERPER_API_KEY), flush=True)
-    logger = logging.getLogger(__name__)
-    logger.info(f"[Web] SERPER_API_KEY present? {'YES' if Config.SERPER_API_KEY else 'NO'}")
-    logger.info(f"[Web] Query: {query}")
-    logger.info(f"[Web] Trusted domains count: {len(Config.WEB_TRUSTED_DOMAINS)}")
-    """
-    
-    Returns list of {title, url, snippet}
-    If SERPER_API_KEY missing, return [] (web lane disabled gracefully).
-    """
     if not Config.SERPER_API_KEY:
         return []
 
@@ -90,16 +81,12 @@ def serper_search(query: str):
         "X-API-KEY": Config.SERPER_API_KEY,
         "Content-Type": "application/json",
     }
-
     r = requests.post(Config.SERPER_ENDPOINT, json=payload, headers=headers, timeout=Config.WEB_TIMEOUT_S)
     r.raise_for_status()
     data = r.json()
-    logger.info(f"[Web] Serper status: {r.status_code}")
-    logger.info(f"[Web] Serper response keys: {list(data.keys())}")
-    logger.info(f"[Web] Organic results: {len(data.get('organic') or [])}")
     results = []
     for item in (data.get("organic") or [])[: Config.WEB_MAX_RESULTS]:
-        url = item.get("link") or ""
+        url = normalize_url(item.get("link") or "")
         if not url or not is_trusted_url(url):
             continue
         results.append({
@@ -111,11 +98,6 @@ def serper_search(query: str):
 
 
 def web_retrieve_as_chunks(question: str) -> list[dict]:
-    """
-    Runs search -> fetches pages -> returns 'chunk-like' dicts.
-    Always trusted-only.
-    """
-    print(">>> web_retrieve_as_chunks() CALLED", flush=True)
     results = serper_search(question)
     chunks = []
 
@@ -142,3 +124,12 @@ def web_retrieve_as_chunks(question: str) -> list[dict]:
         })
 
     return chunks
+
+def normalize_url(url: str) -> str:
+    try:
+        u = urlparse(url)
+        if u.scheme == "http":
+            return url.replace("http://", "https://", 1)
+        return url
+    except Exception:
+        return url
