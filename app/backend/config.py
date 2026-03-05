@@ -30,19 +30,37 @@ class Config:
     WEB_MAX_CHARS_PER_PAGE = 12000
     WEB_TIMEOUT_S = 8
 
-    # Strict allowlist of trusted domains (edit as you like)
-    WEB_TRUSTED_DOMAINS = {
-        "docs.python.org",
-        "developer.mozilla.org",
-        "github.com",
-        "raw.githubusercontent.com",
-        "geeksforgeeks.org",
-        "pypi.org",
-        "arxiv.org",
-        "openai.com",
-        "cloud.google.com",
-        "aws.amazon.com",
+    # Language-aware domain allowlist for web search
+    # Domains are categorized by language for better web search results
+    WEB_TRUSTED_DOMAINS_BY_LANG = {
+        'en': {
+            "docs.python.org",
+            "developer.mozilla.org",
+            "stackoverflow.com",
+            "geeksforgeeks.org",
+            "pypi.org",
+            "openai.com",
+            "cloud.google.com",
+            "aws.amazon.com",
+        },
+        'zh-cn': {
+            "baidu.com",
+            "zhihu.com",
+            "csdn.net",
+            "jianshu.com",
+            "oschina.net",
+        },
+        'all': {  # Universal domains that work for all languages
+            "wikipedia.org",
+            "github.com",
+            "raw.githubusercontent.com",
+            "arxiv.org",
+            "medium.com",
+        }
     }
+    
+    # Legacy unified whitelist (deprecated - kept for backward compatibility)
+    WEB_TRUSTED_DOMAINS = WEB_TRUSTED_DOMAINS_BY_LANG['en'] | WEB_TRUSTED_DOMAINS_BY_LANG['all']
 
     # Search provider (recommended: Serper). If key missing => web lane returns empty.
     SERPER_API_KEY = os.getenv("SERPER_API_KEY", "")
@@ -81,8 +99,9 @@ class Config:
     MAX_CONTENT_LENGTH  = 100 * 1024 * 1024  # 100 MB max file size
     ALLOWED_EXTENSIONS  = {'pdf', 'docx', 'pptx', 'txt'}
     
-    # Embedding Configuration
-    EMBEDDING_MODEL     = 'sentence-transformers/all-MiniLM-L6-v2'
+    # Embedding Configuration - MULTILINGUAL MODEL
+    # Changed from all-MiniLM-L6-v2 (English-only) to support Chinese/English cross-lingual retrieval
+    EMBEDDING_MODEL     = 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
     EMBEDDING_DIMENSION = 384
     
     # LLM Configuration
@@ -90,12 +109,13 @@ class Config:
     LLM_TEMPERATURE = 0.7
     MAX_TOKENS      = 2048
     
-    # Cross-Encoder Configuration (for reranking)
-    RERANK_MODEL = 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+    # Cross-Encoder Configuration (for reranking) - MULTILINGUAL MODEL
+    # Changed from ms-marco-MiniLM (English-only) to support multilingual reranking
+    RERANK_MODEL = 'cross-encoder/mmarco-mMiniLMv2-L12-H384-v1'
     
     # RAG Configuration
     TOP_K_RETRIEVAL = 10  # Number of chunks to retrieve initially
-    RERANK_TOP_K    = 3  # Number of chunks after reranking
+    RERANK_TOP_K    = 5   # Number of chunks after unified reranking (docs + web combined)
     CHUNK_SIZE      = 512  # Characters per chunk
     CHUNK_OVERLAP   = 50  # Overlap between chunks
     MAX_CONVERSATION_HISTORY = 10  # Last N messages to include in context
@@ -191,7 +211,7 @@ Remember: Your goal is to foster understanding and learning, not just provide an
             "topics": {
                 "Physical": ["Landforms", "Climate", "Ecosystems"],
                 "Human": ["Population", "Urbanization", "Migration"],
-                "Regional": ["Continents", "Countries", "Mapping"]
+                "Regional": ["Continents", "Countries"]
             }
         },
         "Economics": {
@@ -230,7 +250,7 @@ Remember: Your goal is to foster understanding and learning, not just provide an
     ]
     
     # Classification thresholds
-    SUBJECT_SIMILARITY_THRESHOLD = 0.25  # Minimum similarity for subject classification (lowered for better recall)
+    SUBJECT_SIMILARITY_THRESHOLD = 0.35  # Minimum similarity for subject classification
     TOPIC_SIMILARITY_THRESHOLD = 0.30    # Minimum similarity for topic classification
 
 

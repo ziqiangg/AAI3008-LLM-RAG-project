@@ -53,6 +53,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./uploads:/app/uploads
+      
     depends_on:
       db:
         condition: service_healthy

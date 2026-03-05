@@ -1,7 +1,5 @@
-/* ══════════════════════════════════════════════════════════
-   RAG Learning Assistant - Main JavaScript
-   Performance-optimized separate JS file
-   ══════════════════════════════════════════════════════════ */
+//RAG Learning Assistant - Main JavaScript
+
 
 const API = 'http://localhost:5000';
 
@@ -312,9 +310,15 @@ function renderSources(sources) {
   }
   empty.style.display = 'none';
 
-  list.innerHTML = sources.map((s, i) => {
+  // Sort sources by rerank score (highest first) for better UX
+  const sortedSources = [...sources].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  list.innerHTML = sortedSources.map((s, i) => {
     const page = s.metadata?.source?.page;
     const pageDisplay = page != null ? ` • Page ${page}` : '';
+    
+    // Citation label: Show [S{citation_index}] to match LLM references
+    const citationLabel = s.citation_index ? `<span style="background:#2196F3; color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; margin-right:6px;">[S${s.citation_index}]</span>` : '';
     
     // Extract subject for badge
     const dominantSubject = s.metadata?.dominant_subject || 'General';
@@ -328,7 +332,7 @@ function renderSources(sources) {
     const clickable = isWeb && url ? `onclick="openWebSource('${url}', ${i})"` : `onclick="setActiveSource(${i})"`;
     return `
     <div class="source-card" ${clickable} title="${escapeHtml(s.content || '')}">
-    <div class="source-file">${icon} ${escapeHtml(title)}${pageDisplay}${subjectBadge}</div>
+    <div class="source-file">${citationLabel}${icon} ${escapeHtml(title)}${pageDisplay}${subjectBadge}</div>
     <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
       <div class="source-score">
         <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>

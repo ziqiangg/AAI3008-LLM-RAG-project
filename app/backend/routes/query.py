@@ -14,12 +14,10 @@ from app.backend.services import retrieval, reranking, generation, classificatio
 from app.backend.config import Config
 import os
 print(">>> LOADED query.py from:", os.path.abspath(__file__), flush=True)
-# NEW: optional web lane (trusted-only)
-# You will create this module in Step 2:
-# app/backend/services/web_retrieval.py
+# Language support: detect_language for identifying query language
+# get_language_instruction for multi-lingual response generation
 from app.backend.services.translation import (
     detect_language,
-    translate_to_english,
     get_language_instruction
 )
 
@@ -133,19 +131,13 @@ def ask_question():
             logger.info(f"[Query] Web enabled: {web_enabled} (toggle={web_toggle}, explicit={web_explicit})")
 
             # ═══════════════════════════════════════════════════════════
-            # TRANSLATE TO ENGLISH FOR EMBEDDING/RETRIEVAL IF QUERY NOT IN ENGLISH
+            # 3. EMBED QUESTION (No translation needed - multilingual model handles cross-lingual semantic matching)
             # ═══════════════════════════════════════════════════════════
-            query_for_retrieval = question
-            if not lang_info['is_english']:
-                query_for_retrieval = translate_to_english(question, source_lang=detected_lang_code)
-                logger.info(f"[Query] Translated question for retrieval: '{query_for_retrieval[:50]}...'")
-            
-            # ═══════════════════════════════════════════════════════════
-            # 3. EMBED QUESTION
-            # ═══════════════════════════════════════════════════════════
+            # Using multilingual embedding model that supports Chinese, English, and 50+ languages
+            # Cross-lingual retrieval works automatically (e.g., Chinese query → English documents)
             embeddings_model = get_embeddings()
-            question_embedding = embeddings_model.embed_query(query_for_retrieval)
-            logger.info(f"[Query] Question embedded: {len(question_embedding)} dimensions")
+            question_embedding = embeddings_model.embed_query(question)  # Use original language
+            logger.info(f"[Query] Question embedded ({detected_lang_name}): {len(question_embedding)} dimensions")
 
             # ═══════════════════════════════════════════════════════════
             # 4. VECTOR RETRIEVAL (PRIMARY)
@@ -176,46 +168,40 @@ def ask_question():
             logger.info(f"[Query] Retrieved {len(retrieved_chunks)} chunks (docs)")
 
             # ═══════════════════════════════════════════════════════════
-            # 5A. RERANK DOC CHUNKS (PRIMARY LANE)
+            # 5. OPTIONAL WEB RETRIEVAL (SECONDARY LANE)
+            #     Language-aware: searches language-appropriate sources
             # ═══════════════════════════════════════════════════════════
-            try:
-                reranked_doc_chunks = reranking.rerank_chunks(
-                    question=question,
-                    chunks=retrieved_chunks,
-                    top_k=Config.RERANK_TOP_K
-                )
-                logger.info(f"[Query] Reranked docs to top {len(reranked_doc_chunks)} chunks")
-            except Exception as e:
-                logger.warning(f"[Query] Doc reranking failed, using retrieval results: {e}")
-                reranked_doc_chunks = retrieved_chunks[:Config.RERANK_TOP_K]
-
-            # ═══════════════════════════════════════════════════════════
-            # 5B. OPTIONAL WEB RETRIEVAL + RERANK (SECONDARY LANE)
-            #     IMPORTANT: Web never replaces docs. It is appended after docs.
-            # ═══════════════════════════════════════════════════════════
-            reranked_web_chunks = []
+            web_chunks = []
             if web_enabled:
                 try:
-                    web_chunks = web_retrieval.web_retrieve_as_chunks(question)
-                    logger.info(f"[Query] Retrieved {len(web_chunks)} chunks (web)")
-
-                    if web_chunks:
-                        try:
-                            reranked_web_chunks = reranking.rerank_chunks(
-                                question=question,
-                                chunks=web_chunks,
-                                top_k=min(len(web_chunks), Config.RERANK_TOP_K)
-                            )
-                            logger.info(f"[Query] Reranked web to top {len(reranked_web_chunks)} chunks")
-                        except Exception as e:
-                            logger.warning(f"[Query] Web reranking failed, using raw web chunks: {e}")
-                            reranked_web_chunks = web_chunks[:Config.RERANK_TOP_K]
+                    # Pass language code for language-aware web search and domain filtering
+                    web_chunks = web_retrieval.web_retrieve_as_chunks(question, lang_code=detected_lang_code)
+                    logger.info(f"[Query] Retrieved {len(web_chunks)} chunks (web, lang={detected_lang_code})")
                 except Exception as e:
-                    logger.warning(f"[Query] Web retrieval failed, skipping web lane: {e}")
-                    reranked_web_chunks = []
+                    logger.warning(f"[Query] Web retrieval failed, skipping web sources: {e}")
+                    web_chunks = []
 
-            # Final context: DOCS FIRST always, then WEB
-            final_context_chunks = reranked_doc_chunks + reranked_web_chunks
+            # ═══════════════════════════════════════════════════════════
+            # 6. UNIFIED RERANKING (DOCS + WEB COMBINED)
+            #     All chunks ranked together - best sources win regardless of type
+            # ═══════════════════════════════════════════════════════════
+            all_chunks = retrieved_chunks + web_chunks
+            logger.info(f"[Query] Combined pool: {len(retrieved_chunks)} docs + {len(web_chunks)} web = {len(all_chunks)} total")
+
+            try:
+                final_context_chunks = reranking.rerank_chunks(
+                    question=question,
+                    chunks=all_chunks,
+                    top_k=Config.RERANK_TOP_K
+                )
+                logger.info(f"[Query] Unified reranking: top {len(final_context_chunks)} chunks selected")
+                # Log source type breakdown
+                doc_count = sum(1 for c in final_context_chunks if c.get('metadata', {}).get('source_type') != 'web')
+                web_count = len(final_context_chunks) - doc_count
+                logger.info(f"[Query] Final mix: {doc_count} docs + {web_count} web")
+            except Exception as e:
+                logger.warning(f"[Query] Unified reranking failed, using top retrieval results: {e}")
+                final_context_chunks = all_chunks[:Config.RERANK_TOP_K]
 
             
             # ═══════════════════════════════════════════════════════════
@@ -253,15 +239,16 @@ def ask_question():
             # 7. PREPARE SOURCE CITATIONS (docs + web)
             # ═══════════════════════════════════════════════════════════
             sources = []
-            for chunk in final_context_chunks:
+            for i, chunk in enumerate(final_context_chunks, 1):
                 md = chunk.get('metadata', {}) or {}
                 sources.append({
                     "chunk_id": chunk.get("chunk_id"),
-                    "document_id": chunk.get("document_id"),
+                    "doc_id": chunk.get("document_id"),  # Changed from document_id to doc_id for frontend compatibility
                     "filename": chunk.get("filename"),
                     "content": chunk.get("content", "")[:300] + ("..." if len(chunk.get("content","")) > 300 else ""),
                     "score": chunk.get("rerank_score", chunk.get("similarity", 0.0)),
                     "chunk_order": chunk.get("chunk_order", 0),
+                    "citation_index": i,  # Preserve LLM's reference order (S1, S2, etc.) even after frontend sorting
                     "metadata": md,
                     "source_type": md.get("source_type", "doc"),     # "doc" or "web"
                     "url": md.get("url"),                           # only for web
@@ -299,6 +286,10 @@ def ask_question():
             # ═══════════════════════════════════════════════════════════
             # 9. RETURN RESPONSE
             # ═══════════════════════════════════════════════════════════
+            # Calculate source type breakdown for metadata
+            num_doc_chunks = sum(1 for c in final_context_chunks if c.get('metadata', {}).get('source_type') != 'web')
+            num_web_chunks = len(final_context_chunks) - num_doc_chunks
+            
             return jsonify({
                 'answer': answer,
                 'sources': sources,
@@ -310,8 +301,9 @@ def ask_question():
                 'metadata': {
                     'model': result['model_used'],
                     'num_chunks_retrieved': len(retrieved_chunks),
-                    'num_chunks_reranked': len(reranked_doc_chunks),
-                    'num_web_chunks': len(reranked_web_chunks),
+                    'num_chunks_reranked': len(final_context_chunks),
+                    'num_doc_chunks': num_doc_chunks,
+                    'num_web_chunks': num_web_chunks,
                     'num_context_messages': len(conversation_history),
                     'finish_reason': result.get('finish_reason', 'COMPLETED'),
                     'web_enabled': web_enabled

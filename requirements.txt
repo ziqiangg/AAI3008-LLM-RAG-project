@@ -6,7 +6,7 @@ langchain==0.2.13                   # Updated to match langchain-community requi
 langchain-community==0.2.12
 langchain-core==0.2.30
 google-generativeai==0.8.3          # For Gemini 2.5 flash API
-sentence-transformers==3.0.1        # For All-MiniLM-L6-v2 embeddings and cross-encoder reranking
+sentence-transformers==3.0.1        # MULTILINGUAL: paraphrase-multilingual-MiniLM-L12-v2 (embeddings) + mmarco-mMiniLMv2-L12-H384-v1 (reranking)
 psycopg2-binary==2.9.9              # PostgreSQL adapter
 pgvector==0.3.4                     # pgvector support for SQLAlchemy
 sqlalchemy==2.0.30                  # ORM for database interactions
