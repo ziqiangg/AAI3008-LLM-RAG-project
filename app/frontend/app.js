@@ -268,11 +268,16 @@ function renderSources(sources) {
     const dominantSubject = s.metadata?.dominant_subject || 'General';
     const subjectColor = SUBJECT_COLORS[dominantSubject] || SUBJECT_COLORS['General'];
     const subjectBadge = `<span style="background:${subjectColor}20; color:${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; margin-left:6px;">${dominantSubject}</span>`;
-    
+    const isWeb = (s.source_type === 'web') || (s.metadata?.source_type === 'web');
+    const icon = isWeb ? '🌐' : '📄';
+    const title = isWeb ? (s.title || s.filename || `Web Source ${i+1}`) : (s.filename || s.doc_id || `Source ${i+1}`);
+    const url = s.url || s.metadata?.url;
+
+    const clickable = isWeb && url ? `onclick="openWebSource('${url}', ${i})"` : `onclick="setActiveSource(${i})"`;
     return `
-    <div class="source-card" onclick="setActiveSource(${i})" title="${escapeHtml(s.content || '')}">
-      <div class="source-file">📄 ${escapeHtml(s.filename || s.doc_id || `Source ${i+1}`)}${pageDisplay}${subjectBadge}</div>
-      <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
+    <div class="source-card" ${clickable} title="${escapeHtml(s.content || '')}">
+    <div class="source-file">${icon} ${escapeHtml(title)}${pageDisplay}${subjectBadge}</div>
+    <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
       <div class="source-score">
         <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>
         ${s.score != null ? `<div class="score-bar"><div class="score-fill" style="width:${(s.score*100).toFixed(0)}%"></div></div>` : ''}
@@ -646,9 +651,9 @@ async function sendQuery() {
   document.getElementById('sources-empty').style.display = 'block';
 
   try {
-    const payload = { question: query };
-    if (currentSession) payload.session_id = currentSession;
 
+    const payload = { question: query, web_search: webSearchEnabled };
+    if (currentSession) payload.session_id = currentSession;
     const res  = await fetch(`${API}/api/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}) },
@@ -815,7 +820,14 @@ function openDocModal(title, bodyHtml) {
 function closeDocModal() {
   document.getElementById('doc-modal').style.display = 'none';
 }
+let webSearchEnabled = false;
 
+function toggleWebSearch() {
+  webSearchEnabled = !webSearchEnabled;
+  const btn = document.getElementById('web-btn');
+  btn.classList.toggle('active', webSearchEnabled);
+  showToast('🌐', webSearchEnabled ? 'Web search enabled' : 'Web search disabled', 'success');
+}
 function highlightText(fullText, needle) {
   if (!needle || needle.length < 20) return escapeHtml(fullText);
 
@@ -840,7 +852,10 @@ function highlightText(fullText, needle) {
     return escapeHtml(p);
   }).join('');
 }
-
+function openWebSource(url, idx) {
+  setActiveSource(idx);
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 // Close when clicking outside modal
 document.getElementById('doc-modal')?.addEventListener('click', (e) => {
   if (e.target.id === 'doc-modal') closeDocModal();

@@ -197,7 +197,20 @@ body {
 #chat-window::-webkit-scrollbar { width: 6px; }
 #chat-window::-webkit-scrollbar-track { background: transparent; }
 #chat-window::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
+#web-btn {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 10px;
+  padding: 0 12px;
+  height: 44px;
+  cursor: pointer;
+  margin-right: 8px;
+}
+#web-btn.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(16,163,127,0.15);
+}
 /* Welcome */
 #welcome {
   display: flex; flex-direction: column;
