@@ -1,9 +1,10 @@
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, make_response
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from app.backend.config import config
 from app.backend.database import close_db_session
 import os
+from datetime import datetime, timedelta
 
 jwt = JWTManager()
 
@@ -39,14 +40,33 @@ def create_app(config_name=None):
         return send_from_directory(
             os.path.join(os.path.dirname(__file__), '../frontend'),
             'index.html'
-        )    
-    # Serve static files from frontend folder
+        )
+        
+    # Serve static files from frontend folder with caching
     @app.route('/<path:filename>')
     def serve_static(filename):
-        return send_from_directory(
-            os.path.join(os.path.dirname(__file__), '../frontend'),
-            filename
+        # Determine cache duration based on file type
+        cache_timeout = 0
+        if filename.endswith(('.css', '.js')):
+            cache_timeout = 31536000  # 1 year for CSS/JS
+        elif filename.endswith(('.svg', '.png', '.jpg', '.jpeg', '.gif', '.ico')):
+            cache_timeout = 2592000  # 30 days for images
+        
+        response = make_response(
+            send_from_directory(
+                os.path.join(os.path.dirname(__file__), '../frontend'),
+                filename
+            )
         )
+        
+        if cache_timeout > 0:
+            # Add cache headers for performance
+            response.headers['Cache-Control'] = f'public, max-age={cache_timeout}'
+            expires = datetime.utcnow() + timedelta(seconds=cache_timeout)
+            response.headers['Expires'] = expires.strftime('%a, %d %b %Y %H:%M:%S GMT')
+        
+        return response
+        
     # ── Health Check ──────────────────────────────────────────────
     @app.route('/api/health')
     def health():
