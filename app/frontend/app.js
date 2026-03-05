@@ -5,6 +5,8 @@
 
 const API = 'http://localhost:5000';
 
+let webSearchEnabled = false;
+
 // ── State ─────────────────────────────────────
 let messages       = [];
 let msgCounter     = 0;
@@ -222,8 +224,58 @@ function updateAuthButton() {
 }
 
 function showUserMenu() {
-  // Simple inline logout for now — can be replaced with a dropdown
-  if (confirm(`Logged in as ${currentUser.username}\n\nClick OK to log out.`)) logout();
+  // Toggle: close if already open
+  const existing = document.getElementById('user-dropdown');
+  if (existing) { existing.remove(); return; }
+
+  const btn = document.getElementById('auth-btn');
+  const rect = btn.getBoundingClientRect();
+
+  const dropdown = document.createElement('div');
+  dropdown.id = 'user-dropdown';
+  dropdown.className = 'user-dropdown';
+  dropdown.style.top  = (rect.bottom + window.scrollY + 8) + 'px';
+  dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+  dropdown.innerHTML = `
+    <button class="user-dropdown-item" onclick="confirmLogout()">🚪 Logout</button>
+    <div class="user-dropdown-divider"></div>
+    <button class="user-dropdown-item danger" onclick="confirmDeleteAccount()">🗑️ Delete Account</button>
+  `;
+  document.body.appendChild(dropdown);
+
+  // Close when clicking anywhere outside
+  setTimeout(() => document.addEventListener('click', closeUserDropdown, { once: true }), 0);
+}
+
+function closeUserDropdown() {
+  const d = document.getElementById('user-dropdown');
+  if (d) d.remove();
+}
+
+function confirmLogout() {
+  closeUserDropdown();
+  if (!confirm('Are you sure you want to log out?')) return;
+  logout();
+}
+
+async function confirmDeleteAccount() {
+  closeUserDropdown();
+  if (!confirm(
+    `Delete your account?\n\nThis will permanently remove all your documents, sessions, and messages.\n\nThis action cannot be undone.`
+  )) return;
+
+  try {
+    const res = await authFetch('/api/users/me', { method: 'DELETE' });
+    if (res.ok) {
+      showToast('🗑️', 'Account deleted. Goodbye!', 'success');
+      setTimeout(() => logout(), 1200);
+    } else {
+      const data = await res.json();
+      showToast('❌', data.error || 'Failed to delete account.', 'error');
+    }
+  } catch {
+    showToast('❌', 'Could not reach the backend.', 'error');
+  }
 }
 
 // Authenticated fetch helper
@@ -827,7 +879,6 @@ function openDocModal(title, bodyHtml) {
 function closeDocModal() {
   document.getElementById('doc-modal').style.display = 'none';
 }
-let webSearchEnabled = false;
 
 function toggleWebSearch() {
   webSearchEnabled = !webSearchEnabled;
@@ -835,6 +886,7 @@ function toggleWebSearch() {
   btn.classList.toggle('active', webSearchEnabled);
   showToast('🌐', webSearchEnabled ? 'Web search enabled' : 'Web search disabled', 'success');
 }
+
 function highlightText(fullText, needle) {
   if (!needle || needle.length < 20) return escapeHtml(fullText);
 

@@ -596,3 +596,49 @@ body {
 #upload-toast.visible { display: flex; }
 #upload-toast.success { border-color: var(--accent); }
 #upload-toast.error   { border-color: var(--danger); }
+
+
+/* ══════════════════════════════════════════
+USER DROPDOWN MENU
+══════════════════════════════════════════ */
+.user-dropdown {
+  position: fixed;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px;
+  min-width: 190px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: fadeIn 0.15s ease;
+}
+
+.user-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.15s;
+}
+
+.user-dropdown-item:hover { background: var(--bg-input); }
+
+.user-dropdown-item.danger { color: var(--danger); }
+.user-dropdown-item.danger:hover { background: rgba(229, 62, 62, 0.1); }
+
+.user-dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}

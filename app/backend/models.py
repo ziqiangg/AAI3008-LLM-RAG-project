@@ -130,7 +130,7 @@ class DocumentChunk(Base):
     __tablename__ = 'document_chunks'
     
     id = Column(Integer, primary_key=True)
-    document_id = Column(Integer, ForeignKey('documents.id', ondelete='CASCADE'))
+    document_id = Column(Integer, ForeignKey('documents.id', ondelete='CASCADE'), nullable=False)
     chunk_order = Column(Integer, nullable=False)
     content = Column(Text, nullable=False)
     embedding = Column(Vector(384))  # 384-dimensional vector for All-MiniLM-L6-v2
