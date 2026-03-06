@@ -861,20 +861,41 @@ def chunk_sections_to_db(
     document_id: int,
     sections: list[dict],
     source_metadata: dict,
-) -> int:
+) -> tuple[int, list[dict]]:
     """
-    Hybrid:
-    - each heading-section becomes a chunk
-    - if a section is too long, split within the section (fallback)
-    Stores section title in chunk_metadata for nicer citations.
+    Hybrid link ingestion:
+    - split HTML into heading sections upstream
+    - each section becomes a chunk
+    - if a section is too long, split inside the section (fallback)
+    - add subject/topic metadata using existing classification service
+
+    Metadata schema aligns with your normal docs:
+      - subjects: List[{"name": str, "confidence": float}, ...]
+      - dominant_subject: str
+      - dominant_topic: str (e.g. "Topic/Subtopic")
     """
+    from app.backend.services import classification  # uses classify_document_subjects + classify_chunk_topics
+    from app.backend.models import DocumentChunk
+    from langchain.text_splitter import RecursiveCharacterTextSplitter
+
     emb = get_embeddings()
-    order = 1
-    count = 0
 
     max_chars = getattr(Config, "LINK_CHUNK_MAX_CHARS", 2200)
     min_chars = getattr(Config, "LINK_CHUNK_MIN_CHARS", 350)
     long_split = getattr(Config, "LINK_LONG_SECTION_SPLIT_SIZE", 1200)
+
+    # ─────────────────────────────────────────────────────────
+    # 1) Build candidate chunk texts (hybrid: section + fallback split)
+    # ─────────────────────────────────────────────────────────
+    def split_long_text(text: str) -> list[str]:
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=long_split,
+            chunk_overlap=0,
+            separators=["\n\n", "\n", " ", ""]
+        )
+        return splitter.split_text(text or "")
+
+    candidate_chunks: list[dict] = []  # [{"title":..., "text":...}, ...]
 
     for sec in sections:
         title = (sec.get("title") or "Section").strip()
@@ -882,13 +903,15 @@ def chunk_sections_to_db(
         if not text:
             continue
 
-        # If section is huge, split inside it (still “within section”)
-        parts = [text] if len(text) <= max_chars else _split_long_text(text, long_split)
+        parts = [text] if len(text) <= max_chars else split_long_text(text)
 
-        # Merge tiny fragments within the section to avoid micro-chunks
+        # Merge small fragments within a section to avoid micro-chunks
         merged_parts = []
         buf = ""
         for p in parts:
+            p = (p or "").strip()
+            if not p:
+                continue
             if not buf:
                 buf = p
             elif len(buf) + len(p) + 2 <= max_chars:
@@ -903,24 +926,92 @@ def chunk_sections_to_db(
             chunk_text = chunk_text.strip()
             if len(chunk_text) < min_chars:
                 continue
+            candidate_chunks.append({"title": title, "text": chunk_text})
 
-            vec = emb.embed_query(chunk_text)
+    if not candidate_chunks:
+        return 0
 
-            md = dict(source_metadata or {})
-            md.update({
-                "source_type": "link",
-                "section_title": title
-            })
+    # ─────────────────────────────────────────────────────────
+    # 2) Document-level subject classification (once)
+    #    Use a sample from the first few sections for speed.
+    # ─────────────────────────────────────────────────────────
+    sample_text = "\n\n".join(
+        [f"{c['title']}\n{c['text']}" for c in candidate_chunks[:3]]
+    )
+    
+    # Returns: [{"name": "AI", "confidence": 0.82}, ...]
+    doc_subject_results = classification.classify_document_subjects(
+        content_sample=sample_text[:3000],
+        embeddings_model=emb,  # works because it provides embed_query()
+        threshold=getattr(Config, "SUBJECT_SIMILARITY_THRESHOLD", None)
+    )
+    if not doc_subject_results:
+        doc_subject_results = [{"name": "General", "confidence": 1.0}]
 
-            dc = DocumentChunk(
-                document_id=document_id,
-                chunk_order=order,
-                content=chunk_text,
-                embedding=vec,
-                chunk_metadata=md
-            )
-            db_session.add(dc)
-            order += 1
-            count += 1
+    document_subject_names = [s["name"] for s in doc_subject_results]
+    dominant_subject = doc_subject_results[0]["name"]
 
-    return count
+    # ─────────────────────────────────────────────────────────
+    # 3) Insert chunks with chunk-level topic classification
+    # ─────────────────────────────────────────────────────────
+    total_chunks = len(candidate_chunks)
+    order = 1
+    count = 0
+
+    for c in candidate_chunks:
+        title = c["title"]
+        chunk_text = c["text"]
+
+        vec = emb.embed_query(chunk_text)
+
+        # Topic classification within known document subjects
+        topic_results = classification.classify_chunk_topics(
+            chunk_content=chunk_text,
+            chunk_embedding=vec,
+            document_subjects=document_subject_names,
+            threshold=getattr(Config, "TOPIC_SIMILARITY_THRESHOLD", None)
+        )
+
+        # Choose a dominant topic string like "Topic/Subtopic"
+        dominant_topic = ""
+        if topic_results:
+            # pick best subject group, then best topic within it
+            best_group = sorted(topic_results, key=lambda x: x.get("confidence", 0.0), reverse=True)[0]
+            top_topics = best_group.get("topics") or []
+            if top_topics:
+                t0 = top_topics[0]
+                if t0.get("subtopic"):
+                    dominant_topic = f"{t0.get('name')}/{t0.get('subtopic')}"
+                else:
+                    dominant_topic = f"{t0.get('name')}"
+
+        md = {
+            "chunk_index": order,
+            "total_chunks": total_chunks,
+            "chunking_method": "hybrid_heading_sections",
+            "content_len": len(chunk_text),
+
+            # link-specific
+            "source_type": "link",
+            "url": (source_metadata or {}).get("url"),
+            "section_title": title,
+
+            # subject/topic metadata (aligned with your normal docs + extract_subject_context)
+            "subjects": doc_subject_results,          # List[{"name","confidence"}]
+            "dominant_subject": dominant_subject,     # string
+            "dominant_topic": dominant_topic,         # string "Topic/Subtopic"
+            "topic_matches": topic_results,           # optional detail for debugging/UI
+        }
+
+        dc = DocumentChunk(
+            document_id=document_id,
+            chunk_order=order,
+            content=chunk_text,
+            embedding=vec,
+            chunk_metadata=md
+        )
+        db_session.add(dc)
+        order += 1
+        count += 1
+
+    return count, doc_subject_results

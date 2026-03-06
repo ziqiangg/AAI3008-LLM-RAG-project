@@ -48,7 +48,7 @@ def ingest_links():
             if not sections:
                 rejected.append({"url": url, "reason": "no_sections_extracted"})
                 continue
-
+            
             domain = urlparse(url).hostname or "link"
             title = domain
             filename = f"LINK: {domain} - {title}"
@@ -64,14 +64,16 @@ def ingest_links():
             db.add(doc)
             db.flush()  # ensures doc.id exists
 
-            chunk_count = chunk_sections_to_db(
+            chunk_count, doc_subject_results = chunk_sections_to_db(
                 db_session=db,
                 document_id=doc.id,
                 sections=sections,
-                source_metadata={"url": url}
+                source_metadata={"source_type": "link", "url": url},
             )
-
             doc.chunk_count = chunk_count
+
+            # ✅ set document tags for sidebar
+            doc.subject = [s["name"] for s in (doc_subject_results or [])][:2] or ["General"]
             ingested.append({"document_id": doc.id, "url": url, "chunks": chunk_count})
 
         db.commit()
