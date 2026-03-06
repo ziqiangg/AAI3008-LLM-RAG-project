@@ -44,7 +44,8 @@ def get_embeddings() -> HuggingFaceEmbeddings:
 # Semantic chunking helpers
 # ──────────────────────────────────────────────────────────────────────────
 
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+# Updated to support multilingual sentence splitting (English + Chinese punctuation)
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?。！？])\s*")
 _MULTI_NL_RE = re.compile(r"\n{2,}")
 
 

@@ -1,7 +1,5 @@
-/* ══════════════════════════════════════════════════════════
-   RAG Learning Assistant - Main JavaScript
-   Performance-optimized separate JS file
-   ══════════════════════════════════════════════════════════ */
+//RAG Learning Assistant - Main JavaScript
+
 
 const API = 'http://localhost:5000';
 
@@ -312,9 +310,15 @@ function renderSources(sources) {
   }
   empty.style.display = 'none';
 
-  list.innerHTML = sources.map((s, i) => {
+  // Sort sources by rerank score (highest first) for better UX
+  const sortedSources = [...sources].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+  list.innerHTML = sortedSources.map((s, i) => {
     const page = s.metadata?.source?.page;
     const pageDisplay = page != null ? ` • Page ${page}` : '';
+    
+    // Citation label: Show [S{citation_index}] to match LLM references
+    const citationLabel = s.citation_index ? `<span style="background:#2196F3; color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; margin-right:6px;">[S${s.citation_index}]</span>` : '';
     
     // Extract subject for badge
     const dominantSubject = s.metadata?.dominant_subject || 'General';
@@ -328,7 +332,7 @@ function renderSources(sources) {
     const clickable = isWeb && url ? `onclick="openWebSource('${url}', ${i})"` : `onclick="setActiveSource(${i})"`;
     return `
     <div class="source-card" ${clickable} title="${escapeHtml(s.content || '')}">
-    <div class="source-file">${icon} ${escapeHtml(title)}${pageDisplay}${subjectBadge}</div>
+    <div class="source-file">${citationLabel}${icon} ${escapeHtml(title)}${pageDisplay}${subjectBadge}</div>
     <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
       <div class="source-score">
         <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>
@@ -933,10 +937,59 @@ function closeDocModal() {
 
 function toggleWebSearch() {
   webSearchEnabled = !webSearchEnabled;
-  const btn = document.getElementById('web-btn');
-  btn.classList.toggle('active', webSearchEnabled);
   showToast('🌐', webSearchEnabled ? 'Web search enabled' : 'Web search disabled', 'success');
+  _syncAddMenuState(); 
 }
+
+// ── Add menu toggle ────────────────────────────────────────
+function toggleAddMenu() {
+  const menu = document.getElementById('add-menu');
+  const btn  = document.getElementById('add-btn');
+  const open = menu.style.display === 'none' || menu.style.display === '';
+  menu.style.display = open ? 'block' : 'none';
+  btn.classList.toggle('active', open);
+
+  if (open) {
+    setTimeout(() => document.addEventListener('click', _closeAddMenu, { once: true }), 0);
+  }
+}
+
+function _closeAddMenu(e) {
+  const wrap = document.querySelector('.add-btn-wrap');
+  if (wrap && wrap.contains(e.target)) return;
+  document.getElementById('add-menu').style.display  = 'none';
+  document.getElementById('add-btn').classList.remove('active');
+}
+
+// ── Web search option ──────────────────────────────────────
+function selectWebSearch() {
+  toggleWebSearch();                          // existing toggle logic
+  _syncAddMenuState();
+  document.getElementById('add-menu').style.display = 'none';
+  document.getElementById('add-btn').classList.remove('active');
+}
+
+// ── Quiz option ────────────────────────────────────────────
+function selectQuiz() {
+  document.getElementById('add-menu').style.display = 'none';
+  document.getElementById('add-btn').classList.remove('active');
+  openQuizModal();                            // existing quiz modal function
+}
+
+// ── Sync pill + checkmark with webSearchEnabled state ─────
+function _syncAddMenuState() {
+  const pill      = document.getElementById('web-pill');
+  const check     = document.getElementById('web-check');
+  const features  = document.getElementById('active-features');
+
+  if (pill)  pill.style.display  = webSearchEnabled ? 'inline-flex' : 'none';
+  if (check) check.style.display = webSearchEnabled ? 'inline'      : 'none';
+
+  // Show/hide the features row
+  const anyActive = webSearchEnabled;
+  if (features) features.style.display = anyActive ? 'flex' : 'none';
+}
+
 
 function highlightText(fullText, needle) {
   if (!needle || needle.length < 20) return escapeHtml(fullText);
@@ -970,3 +1023,255 @@ function openWebSource(url, idx) {
 document.getElementById('doc-modal')?.addEventListener('click', (e) => {
   if (e.target.id === 'doc-modal') closeDocModal();
 });
+
+// ══════════════════════════════════════════════════════════
+// QUIZ
+// ══════════════════════════════════════════════════════════
+let _currentQuiz    = null;
+let _quizAnswers    = {};
+let _quizSubmitted  = false;
+
+function openQuizModal() {
+  closeQuiz();
+  const overlay = document.getElementById('quiz-modal-overlay');
+  overlay.classList.add('visible');
+  document.getElementById('quiz-error').textContent = '';
+
+  const note = document.getElementById('quiz-scope-note');
+  if (currentSession) {
+    note.textContent = `📎 Quiz will use documents from your current session.`;
+  } else if (currentUser) {
+    note.textContent = `📂 Quiz will use all your uploaded documents.`;
+  } else {
+    note.textContent = `ℹ️ Log in to scope the quiz to your documents.`;
+  }
+}
+
+function closeQuizModal() {
+  document.getElementById('quiz-modal-overlay').classList.remove('visible');
+}
+
+document.getElementById('quiz-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('quiz-modal-overlay')) closeQuizModal();
+});
+
+async function generateQuiz() {
+  const btn   = document.getElementById('quiz-generate-btn');
+  const errEl = document.getElementById('quiz-error');
+  errEl.textContent = '';
+
+  const numQ  = parseInt(document.getElementById('quiz-num').value) || 5;
+  const diff  = document.getElementById('quiz-difficulty').value;
+  const qType = document.getElementById('quiz-type').value;
+  const topic = document.getElementById('quiz-topic').value.trim();
+
+  let docIds = [];
+  if (currentSession) {
+    try {
+      const r    = await authFetch(`/api/sessions/${currentSession}`);
+      const data = await r.json();
+      docIds     = data.document_ids || [];
+    } catch { /* use empty = all docs */ }
+  }
+
+  btn.disabled    = true;
+  btn.textContent = 'Generating…';
+
+  try {
+    const res  = await authFetch('/api/quiz/generate', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({
+        num_questions: numQ,
+        difficulty   : diff,
+        question_type: qType,
+        topic        : topic,
+        document_ids : docIds,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error || 'Failed to generate quiz.';
+      return;
+    }
+
+    closeQuizModal();
+    _startQuiz(data.quiz);
+
+  } catch {
+    errEl.textContent = 'Could not reach the backend.';
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Generate Quiz';
+  }
+}
+
+function _startQuiz(quiz) {
+  _currentQuiz   = quiz;
+  _quizAnswers   = {};
+  _quizSubmitted = false;
+
+  quiz.questions.forEach(q => { _quizAnswers[q.id] = new Set(); });
+
+  const view = document.getElementById('quiz-view');
+  view.style.display = 'flex';
+  document.getElementById('quiz-results').style.display = 'none';
+  document.getElementById('quiz-results').classList.remove('visible');
+  document.getElementById('quiz-footer').style.display = 'block';
+  document.getElementById('quiz-questions').style.display = 'flex';
+
+  const cfg = quiz.config;
+  document.getElementById('quiz-badge').textContent =
+    `${cfg.difficulty} · ${cfg.question_type.replace('_', '-')}`;
+  document.getElementById('quiz-progress').textContent =
+    `${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''}`;
+
+  const container = document.getElementById('quiz-questions');
+  container.innerHTML = '';
+  quiz.questions.forEach((q, idx) => {
+    container.appendChild(_buildQuestionCard(q, idx + 1));
+  });
+}
+
+function _buildQuestionCard(q, num) {
+  const isMulti = q.type === 'multi_select';
+  const card    = document.createElement('div');
+  card.className = 'quiz-card';
+  card.id = `quiz-card-${q.id}`;
+
+  card.innerHTML = `
+    <div class="quiz-card-header">
+      <span class="quiz-q-num">Q${num}</span>
+      <span class="quiz-q-type-badge">${isMulti ? 'multi-select' : 'single answer'}</span>
+      <span class="quiz-q-text">${q.question}</span>
+    </div>
+    <div class="quiz-options" id="quiz-opts-${q.id}">
+      ${q.options.map(opt => {
+        const label = opt.charAt(0);
+        return `
+          <div class="quiz-option" id="quiz-opt-${q.id}-${label}"
+               onclick="selectOption(${q.id}, '${label}', ${isMulti})">
+            <span class="opt-label">${label}</span>
+            <span>${opt.slice(3)}</span>
+          </div>`;
+      }).join('')}
+    </div>
+    <div class="quiz-explanation" id="quiz-exp-${q.id}">
+      💡 ${q.explanation}
+    </div>
+  `;
+  return card;
+}
+
+function selectOption(qId, label, isMulti) {
+  if (_quizSubmitted) return;
+  const answers = _quizAnswers[qId];
+
+  if (isMulti) {
+    if (answers.has(label)) answers.delete(label);
+    else                    answers.add(label);
+  } else {
+    answers.clear();
+    answers.add(label);
+  }
+
+  const q = _currentQuiz.questions.find(x => x.id === qId);
+  q.options.forEach(opt => {
+    const optLabel = opt.charAt(0);
+    const el       = document.getElementById(`quiz-opt-${qId}-${optLabel}`);
+    el.classList.toggle('selected', answers.has(optLabel));
+  });
+}
+
+function submitQuiz() {
+  if (!_currentQuiz) return;
+  _quizSubmitted = true;
+
+  let correct = 0;
+  const questions = _currentQuiz.questions;
+
+  questions.forEach(q => {
+    const userAnswers    = _quizAnswers[q.id];
+    const correctAnswers = new Set(q.correct);
+    const isCorrect      =
+      userAnswers.size === correctAnswers.size &&
+      [...userAnswers].every(a => correctAnswers.has(a));
+
+    if (isCorrect) correct++;
+
+    q.options.forEach(opt => {
+      const label      = opt.charAt(0);
+      const el         = document.getElementById(`quiz-opt-${q.id}-${label}`);
+      const isCorrectOpt = correctAnswers.has(label);
+      const wasSelected  = userAnswers.has(label);
+
+      el.classList.add('locked');
+      el.classList.remove('selected');
+
+      if (wasSelected && isCorrectOpt)  el.classList.add('correct');
+      else if (wasSelected)             el.classList.add('wrong');
+      else if (isCorrectOpt)            el.classList.add('missed');
+    });
+
+    document.getElementById(`quiz-exp-${q.id}`).classList.add('visible');
+  });
+
+  document.getElementById('quiz-footer').style.display    = 'none';
+  document.getElementById('quiz-questions').style.display = 'none';
+  _showResults(correct, questions.length);
+}
+
+function _showResults(correct, total) {
+  const pct = Math.round((correct / total) * 100);
+  const msg = pct === 100 ? '🏆 Perfect score!'
+            : pct >= 80   ? '🎉 Great job!'
+            : pct >= 60   ? '👍 Good effort!'
+            : pct >= 40   ? '📚 Keep studying!'
+            :                '💪 Review the material and try again!';
+
+  document.getElementById('quiz-score-banner').innerHTML = `
+    <div class="score-number">${correct}/${total}</div>
+    <div class="score-label">${pct}% correct</div>
+    <div class="score-msg">${msg}</div>
+  `;
+
+  const review = document.getElementById('quiz-review');
+  review.innerHTML = '';
+  _currentQuiz.questions.forEach((q, idx) => {
+    const userAnswers    = _quizAnswers[q.id];
+    const correctAnswers = new Set(q.correct);
+    const isCorrect      =
+      userAnswers.size === correctAnswers.size &&
+      [...userAnswers].every(a => correctAnswers.has(a));
+
+    const card = document.createElement('div');
+    card.className = 'quiz-card';
+    card.innerHTML = `
+      <div class="quiz-card-header">
+        <span class="quiz-q-num">Q${idx + 1}</span>
+        <span style="font-size:13px">${isCorrect ? '✅' : '❌'}</span>
+        <span class="quiz-q-text">${q.question}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">
+        Your answer: <strong style="color:var(--text-primary)">${[...userAnswers].join(', ') || '—'}</strong>
+        &nbsp;|&nbsp;
+        Correct: <strong style="color:var(--accent)">${q.correct.join(', ')}</strong>
+      </div>
+      <div class="quiz-explanation visible">💡 ${q.explanation}</div>
+    `;
+    review.appendChild(card);
+  });
+
+  const resultsEl = document.getElementById('quiz-results');
+  resultsEl.style.display = 'flex';
+  resultsEl.classList.add('visible');
+}
+
+function closeQuiz() {
+  const view = document.getElementById('quiz-view');
+  if (view) view.style.display = 'none';
+  _currentQuiz   = null;
+  _quizAnswers   = {};
+  _quizSubmitted = false;
+}

@@ -56,7 +56,7 @@ def initialize_classification_embeddings(embeddings_model: SentenceTransformer):
         "Chemistry": "molecules atoms reactions compounds elements bonding organic inorganic physical chemistry synthesis",
         "Biology": "cells organisms genetics DNA RNA proteins evolution ecology species life biological systems",
         "Language Learning": "grammar vocabulary pronunciation syntax morphology linguistics language acquisition translation",
-        "Geography": "locations maps regions climate landforms countries continents spatial earth science",
+        "Geography": "locations maps regions climate landforms countries continents spatial earth",
         "Economics": "markets supply demand GDP inflation prices trade financial monetary policy",
         "Social Studies": "history politics society government culture civilization historical events",
         "Computer Systems": "architecture hardware operating systems networks processors memory storage protocols",
