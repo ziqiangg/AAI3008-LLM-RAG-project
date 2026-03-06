@@ -83,18 +83,48 @@
 
   <!-- Input area -->
   <div id="input-area">
-    <div id="input-box">
-      <div class="input-row">
-        <textarea id="query-input" rows="1"
-          placeholder="Ask a question about your documents..."
-          onkeydown="handleKey(event)"
-          oninput="autoResize(this)"></textarea>
-        <button id="web-btn" class="icon-btn" onclick="toggleWebSearch()" title="Web Search (trusted sources only)">🌐</button>
-        <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
-      </div>
+  <div id="input-box">
+    <!-- Active feature pills (shown when web search / quiz is on) -->
+    <div id="active-features" style="display:none;">
+      <span id="web-pill" class="feature-pill" style="display:none;">
+        🌐 Web Search <button onclick="toggleWebSearch()" title="Remove">✕</button>
+      </span>
     </div>
-    <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Use sidebar to upload documents</div>
+
+    <div class="input-row">
+      <!-- + Add button -->
+      <div class="add-btn-wrap">
+        <button id="add-btn" class="icon-btn add-btn" onclick="toggleAddMenu()" title="Add feature">＋</button>
+        <!-- Dropdown -->
+        <div id="add-menu" class="add-menu" style="display:none;">
+          <button class="add-menu-item" id="web-menu-item" onclick="selectWebSearch()">
+            <span class="add-menu-icon">🌐</span>
+            <span class="add-menu-text">
+              <strong>Web Search</strong>
+              <small>Search trusted sources</small>
+            </span>
+            <span id="web-check" class="add-menu-check" style="display:none;">✓</span>
+          </button>
+          <div class="add-menu-divider"></div>
+          <button class="add-menu-item" onclick="selectQuiz()">
+            <span class="add-menu-icon">🧠</span>
+            <span class="add-menu-text">
+              <strong>Generate Quiz</strong>
+              <small>Create questions from your docs</small>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <textarea id="query-input" rows="1"
+        placeholder="Ask a question about your documents..."
+        onkeydown="handleKey(event)"
+        oninput="autoResize(this)"></textarea>
+      <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
+    </div>
   </div>
+  <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Use sidebar to upload documents</div>
+</div>
 </main>
 
 <!-- -----------------------------------------------
@@ -125,6 +155,8 @@
     </div>
   </div>
 </aside>
+
+
 
 <!-- -----------------------------------------------
      AUTH MODAL
@@ -168,6 +200,66 @@
       Loading…
     </div>
 
+  </div>
+</div>
+<!-- ── Quiz Config Modal ─────────────────────────── -->
+<div id="quiz-modal-overlay">
+  <div id="quiz-modal">
+    <div class="modal-header">
+      <h2>🧠 Generate Quiz</h2>
+      <button id="quiz-modal-close" onclick="closeQuizModal()">✕</button>
+    </div>
+
+    <div class="quiz-form">
+      <label>Number of Questions
+        <input id="quiz-num" type="number" min="1" max="20" value="5" />
+      </label>
+
+      <label>Difficulty
+        <select id="quiz-difficulty">
+          <option value="easy">Easy — direct recall</option>
+          <option value="medium" selected>Medium — inference</option>
+          <option value="hard">Hard — analysis &amp; application</option>
+        </select>
+      </label>
+
+      <label>Question Type
+        <select id="quiz-type">
+          <option value="mcq" selected>MCQ — single correct answer</option>
+          <option value="multi_select">Multi-select — multiple correct answers</option>
+          <option value="mixed">Mixed</option>
+        </select>
+      </label>
+
+      <label>Topic / Focus <span class="label-hint">(optional)</span>
+        <input id="quiz-topic" type="text" placeholder="e.g. neural networks, osmosis, World War II…" />
+      </label>
+
+      <p id="quiz-scope-note" class="quiz-scope-note"></p>
+    </div>
+
+    <p id="quiz-error" class="quiz-error"></p>
+    <button id="quiz-generate-btn" onclick="generateQuiz()">Generate Quiz</button>
+  </div>
+</div>
+
+<!-- ── Quiz View ──────────────────────────────────── -->
+<div id="quiz-view" style="display:none;">
+  <div id="quiz-header">
+    <div id="quiz-title-bar">
+      <span id="quiz-badge"></span>
+      <span id="quiz-progress"></span>
+    </div>
+    <button id="quiz-close-btn" onclick="closeQuiz()">✕ Close Quiz</button>
+  </div>
+  <div id="quiz-questions"></div>
+  <div id="quiz-footer" style="display:none;">
+    <button id="quiz-submit-btn" onclick="submitQuiz()">Submit Quiz</button>
+  </div>
+  <div id="quiz-results" style="display:none;">
+    <div id="quiz-score-banner"></div>
+    <div id="quiz-review"></div>
+    <button id="quiz-retry-btn" onclick="openQuizModal()">🔄 New Quiz</button>
   </div>
 </div>
 
