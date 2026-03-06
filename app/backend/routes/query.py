@@ -15,11 +15,7 @@ from app.backend.config import Config
 import os
 print(">>> LOADED query.py from:", os.path.abspath(__file__), flush=True)
 # Language support: detect_language for identifying query language
-# get_language_instruction for multi-lingual response generation
-from app.backend.services.translation import (
-    detect_language,
-    get_language_instruction
-)
+from app.backend.services.translation import detect_language
 
 query_bp = Blueprint('query', __name__)
 logger = logging.getLogger(__name__)
@@ -216,10 +212,11 @@ def ask_question():
             # ═══════════════════════════════════════════════════════════
             # LANGUAGE INSTRUCTION FOR GEMINI PROMPT
             # ═══════════════════════════════════════════════════════════
-            language_instruction = get_language_instruction(
-                lang_code=detected_lang_code,
-                lang_name=detected_lang_name
-            )
+            language_info = {
+                'code': detected_lang_code,
+                'name': detected_lang_name,
+                'is_english': detected_lang_code == 'en'
+            }
 
             # ═══════════════════════════════════════════════════════════
             # GENERATE ANSWER IN USER'S LANGUAGE
@@ -229,7 +226,8 @@ def ask_question():
                 context_chunks=final_context_chunks,
                 conversation_history=conversation_history,
                 subject_context=subject_context,
-                language_instruction=language_instruction
+                language_info=language_info,
+                web_enabled=web_enabled
             )
 
             answer = result['answer']

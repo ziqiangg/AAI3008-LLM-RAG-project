@@ -56,16 +56,3 @@ def translate_to_english(text: str, source_lang: str = 'auto') -> str:
     except Exception as e:
         logger.warning(f"Translation to English failed: {e}, using original query")
         return text
-    
-def get_language_instruction(lang_code: str, lang_name: str) -> str:
-    """
-    Returns a language instruction string to inject into the Gemini prompt
-    """
-    if lang_code == 'en':
-        return ""
-    return (
-        f"\n\n=== LANGUAGE INSTRUCTION ===\n"
-        f"The user's question was written in {lang_name}. "
-        f"You MUST respond entirely in {lang_name}."
-        f"Do not respond in English unless the user's question was in English."
-    )

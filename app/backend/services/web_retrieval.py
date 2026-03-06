@@ -10,9 +10,16 @@ except Exception:
     BeautifulSoup = None
 
 
+# Keywords to detect explicit user request for web search (in-message)
+WEB_EXPLICIT_KEYWORDS = [
+    "search the web", "search online", "look up online", "lookup online",
+    "browse the web", "check the latest", "latest info", "verify online",
+]
+
+
 def user_explicitly_requested_web(question: str) -> bool:
     q = (question or "").lower()
-    return any(k in q for k in Config.WEB_EXPLICIT_KEYWORDS)
+    return any(k in q for k in WEB_EXPLICIT_KEYWORDS)
 
 
 def is_trusted_url(url: str, lang_code: str = None) -> bool:
