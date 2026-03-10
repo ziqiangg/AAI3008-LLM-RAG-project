@@ -28,6 +28,9 @@ def detect_language(text: str) -> dict:
         - name: human-readable language name (e.g., 'English')
         - is_english: bool
     """
+    if len(text.strip()) < 30:
+        return {'code': 'en', 'name': 'English'}
+    
     try:
         code = detect(text)
         name = SUPPORTED_LANGUAGES.get(code, code)

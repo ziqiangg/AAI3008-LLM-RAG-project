@@ -292,7 +292,14 @@ def build_prompt(
         subject_prompt = get_subject_prompt(subject_context)
         if subject_prompt:
             sections.append(subject_prompt)
-    
+
+    # 3b. DIAGRAM INSTRUCTION (if question asks for diagram)
+    diagram_keywords = ['draw', 'diagram', 'flowchart', 'chart', 'visuali', 'illustrate', 'sketch', 'show a', 'create a']
+    if any(kw in question.lower() for kw in diagram_keywords):
+        sections.append("""=== DIAGRAM NOTICE ===
+    The user has requested a visual diagram. A diagram will be automatically generated and displayed below your response.
+    Do NOT say you cannot draw diagrams. Instead, briefly describe what the diagram shows and explain the key components and relationships it contains.""")
+        
     # 4. SOURCE CONTEXT NOTICE
     source_prompt = get_source_context_prompt(context_chunks)
     if source_prompt:

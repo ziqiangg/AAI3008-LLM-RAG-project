@@ -12,6 +12,8 @@ from app.backend.models import Session as ConvSession, Message
 from app.backend.services.injestion import get_embeddings
 from app.backend.services import retrieval, reranking, generation, classification,web_retrieval
 from app.backend.config import Config
+from app.backend.services.tool_detection import detect_and_generate_tool
+
 import os
 print(">>> LOADED query.py from:", os.path.abspath(__file__), flush=True)
 # Language support: detect_language for identifying query language
@@ -64,6 +66,7 @@ def ask_question():
         web_toggle = bool(data.get('web_search', False))
         web_explicit = web_retrieval.user_explicitly_requested_web(question)
         web_enabled = web_toggle or web_explicit
+        diagram_enabled = bool(data.get('diagram', False))
 
         # Check if user is authenticated (optional)
         current_user_id = None
@@ -231,7 +234,15 @@ def ask_question():
             )
 
             answer = result['answer']
-            logger.info(f"[Query] Answer generated: {len(answer)} chars")
+            try:
+                tool_output = detect_and_generate_tool(
+                    question=question,
+                    context_chunks=final_context_chunks
+                )
+                logger.warning(f"[Tool] output type: {tool_output['type'] if tool_output else 'none'}")
+            except Exception as tool_err:
+                logger.warning(f"[Tool] Detection failed: {tool_err}")
+                tool_output = None
 
             # ═══════════════════════════════════════════════════════════
             # 7. PREPARE SOURCE CITATIONS (docs + web)
@@ -291,6 +302,7 @@ def ask_question():
             return jsonify({
                 'answer': answer,
                 'sources': sources,
+                'tool': tool_output,
                 'session_id': session_id,
                 'detected_language': {
                     'code': detected_lang_code,

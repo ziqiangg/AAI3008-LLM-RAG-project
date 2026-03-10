@@ -3,7 +3,11 @@
 
 const API = 'http://localhost:5000';
 
+// ── Mermaid init ───────────────────────────────────────
+mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+
 let webSearchEnabled = false;
+let diagramEnabled = false;
 
 // ── State ─────────────────────────────────────
 let messages       = [];
@@ -744,6 +748,153 @@ function editDocumentSubject(docId, currentSubjects) {
 }
 
 // ══════════════════════════════════════════════
+// TOOL RENDERING (Mermaid / Desmos)
+// ══════════════════════════════════════════════
+
+function renderToolPanel(tool) {
+  if (!tool) return '';
+  const id = 'tool-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+
+  if (tool.type === 'mermaid') {
+    return `
+      <div class="tool-panel" data-tool-id="${id}">
+        <div class="tool-panel-header">
+          <span>🔀 Diagram</span>
+          <div class="download-group">
+            <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'svg')">⬇ SVG</button>
+            <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'png')">⬇ PNG</button>
+            <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'pdf')">⬇ PDF</button>
+          </div>
+        </div>
+        <div class="mermaid-container" id="${id}">
+          <div class="mermaid">${escapeHtml(tool.code)}</div>
+        </div>
+      </div>`;
+  }
+
+  if (tool.type === 'desmos') {
+    return `
+      <div class="tool-panel" data-tool-id="${id}">
+        <div class="tool-panel-header">
+          <span>📈 Graph</span>
+          <div class="download-group">
+            <button class="tool-download-btn" onclick="downloadDesmos('${id}')">⬇ PNG</button>
+          </div>
+        </div>
+        <div class="desmos-container" id="${id}"></div>
+      </div>
+      <script>
+        (function() {
+          const el = document.getElementById('${id}');
+          const calc = Desmos.GraphingCalculator(el, { expressions: true, keypad: false });
+          window['desmos_${id}'] = calc;
+          ${JSON.stringify(tool.expressions)}.forEach(function(latex, i) {
+            calc.setExpression({ id: 'e' + i, latex: latex });
+          });
+        })();
+      <\/script>`;
+  }
+  return '';
+}
+
+function initMermaidInElement(el) {
+  // After HTML is in DOM, find any un-rendered .mermaid nodes and render them
+  const nodes = el.querySelectorAll('.mermaid:not([data-processed])');
+  if (nodes.length > 0) mermaid.run({ nodes: Array.from(nodes) });
+}
+
+async function downloadMermaid(id, format = 'svg') {
+  const container = document.getElementById(id);
+  if (!container) return alert('Diagram not ready yet.');
+  const svg = container.querySelector('svg');
+  if (!svg) return alert('Diagram not ready yet — please wait a moment.');
+
+  if (format === 'svg') {
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgData], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `diagram.svg`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    return;
+  }
+
+  if (format === 'png' || format === 'pdf') {
+    const bbox = svg.getBoundingClientRect();
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = bbox.width * scale;
+    canvas.height = bbox.height * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, bbox.width, bbox.height);
+
+    // Clone SVG with explicit namespace and dimensions
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    clone.setAttribute('width', bbox.width);
+    clone.setAttribute('height', bbox.height);
+
+    // Inline all styles from stylesheets into the SVG
+    const styles = Array.from(document.styleSheets)
+      .flatMap(sheet => { try { return Array.from(sheet.cssRules); } catch { return []; } })
+      .map(rule => rule.cssText)
+      .join('\n');
+    const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+    styleEl.textContent = styles;
+    clone.insertBefore(styleEl, clone.firstChild);
+
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const svgBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
+
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0, bbox.width, bbox.height);
+
+      if (format === 'png') {
+        canvas.toBlob(blob => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'diagram.png';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        }, 'image/png');
+
+      } else {
+        const imgData = canvas.toDataURL('image/png');
+        const win = window.open('', '_blank');
+        if (!win) { alert('Allow popups for PDF export.'); return; }
+        win.document.write(`<!DOCTYPE html><html><head><title>Diagram</title>
+          <style>*{margin:0;padding:0} body{display:flex;justify-content:center;align-items:center;min-height:100vh;background:#fff}
+          img{max-width:100%} @media print{body{margin:0}}</style></head>
+          <body><img src="${imgData}">
+          <script>window.onload=()=>setTimeout(()=>window.print(),500)<\/script>
+          </body></html>`);
+        win.document.close();
+      }
+    };
+    img.onerror = () => alert('Export failed. Try SVG instead.');
+    img.src = svgBase64;
+  }
+}
+
+function downloadDesmos(id) {
+  const calc = window['desmos_' + id];
+  if (!calc) return alert('Graph not ready yet.');
+  calc.asyncScreenshot({ width: 800, height: 500, targetPixelRatio: 2 }, (dataUrl) => {
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'graph.png';
+    a.click();
+  });
+}
+
+// ══════════════════════════════════════════════
 // QUERY
 // ══════════════════════════════════════════════
 async function sendQuery() {
@@ -766,7 +917,7 @@ async function sendQuery() {
 
   try {
 
-    const payload = { question: query, web_search: webSearchEnabled };
+    const payload = { question: query, web_search: webSearchEnabled, diagram: diagramEnabled };
     if (currentSession) payload.session_id = currentSession;
     const res  = await fetch(`${API}/api/query`, {
       method: 'POST',
@@ -775,8 +926,8 @@ async function sendQuery() {
     });
     const data = await res.json();
     const answer = data.answer || data.response || data.message || JSON.stringify(data);
-
-    updateMessage(loadingId, answer);
+    const toolHtml = renderToolPanel(data.tool || null);
+    updateMessage(loadingId, answer, toolHtml);
     if (data.sources) renderSources(data.sources);
 
     // Reload sessions to update titles (messages already saved by query endpoint)
@@ -809,9 +960,16 @@ function appendMessage(role, docName, text, isLoading = false) {
   return id;
 }
 
-function updateMessage(id, text) {
-  const el = document.querySelector(`#${id} .message-text`);
-  if (el) { el.innerHTML = renderMarkdown(text); el.classList.remove('loading'); }
+function updateMessage(id, text, toolHtml = '') {
+  const msgEl = document.getElementById(id);
+  const textEl = msgEl ? msgEl.querySelector('.message-text') : null;
+  if (textEl) {
+    textEl.innerHTML = renderMarkdown(text) + toolHtml;
+    textEl.classList.remove('loading');
+    // Trigger Mermaid rendering on any diagram nodes just added to DOM
+    initMermaidInElement(textEl);
+  }
+  return msgEl;  // return the message div for KaTeX re-render etc.
 }
 
 // ══════════════════════════════════════════════
@@ -967,6 +1125,17 @@ function selectWebSearch() {
   _syncAddMenuState();
   document.getElementById('add-menu').style.display = 'none';
   document.getElementById('add-btn').classList.remove('active');
+}
+
+// ── Diagram option ──────────────────────────────────────
+function selectDiagram() {
+  diagramEnabled = !diagramEnabled;
+  document.getElementById('diagram-check').style.display = diagramEnabled ? 'inline' : 'none';
+  document.getElementById('diagram-pill').style.display  = diagramEnabled ? 'inline-flex' : 'none';
+  document.getElementById('active-features').style.display = 
+    (diagramEnabled || webSearchEnabled) ? 'flex' : 'none';
+  document.getElementById('add-menu').style.display = 'none';  // replaces closeAddMenu()
+  showToast('🔀', diagramEnabled ? 'Diagram mode enabled' : 'Diagram mode disabled', 'success');
 }
 
 // ── Quiz option ────────────────────────────────────────────

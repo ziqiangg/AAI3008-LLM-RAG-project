@@ -15,6 +15,10 @@
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
   <!-- Main Stylesheet (performance-optimized separate file) -->
   <link rel="stylesheet" href="styles.css">
+  <!-- Mermaid – diagram rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- Desmos – graphing calculator -->
+  <!-- <script src="https://www.desmos.com/api/v1.9/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script> -->
   <script defer src="app.js"></script>
 </head>
 <body>
@@ -98,6 +102,9 @@
       <span id="web-pill" class="feature-pill" style="display:none;">
         🌐 Web Search <button onclick="toggleWebSearch()" title="Remove">✕</button>
       </span>
+      <span id="diagram-pill" class="feature-pill" style="display:none;">
+        🔀 Diagram <button onclick="selectDiagram()" title="Remove">✕</button>
+      </span>
     </div>
 
     <div class="input-row">
@@ -121,6 +128,15 @@
               <strong>Generate Quiz</strong>
               <small>Create questions from your docs</small>
             </span>
+          </button>
+          <div class="add-menu-divider"></div>
+          <button class="add-menu-item" id="diagram-menu-item" onclick="selectDiagram()">
+            <span class="add-menu-icon">🔀</span>
+            <span class="add-menu-text">
+              <strong>Generate Diagram</strong>
+              <small>Visualize as flowchart or UML</small>
+            </span>
+            <span id="diagram-check" class="add-menu-check" style="display:none;">✓</span>
           </button>
         </div>
       </div>
