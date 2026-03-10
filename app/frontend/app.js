@@ -449,6 +449,45 @@ function addLink() {
   const inp = document.getElementById("link-input");
   const url = (inp.value || "").trim();
   if (!url) return;
+  
+  // Basic URL validation
+  try {
+    const parsed = new URL(url);
+    
+    // Check if HTTPS
+    if (parsed.protocol !== 'https:') {
+      showToast("⚠️", "Warning: Only HTTPS links are accepted", "warning");
+      return;
+    }
+    
+    // Warn about potentially untrusted domains (soft warning)
+    const trustedDomains = [
+      'wikipedia.org', 'github.com', 'stackoverflow.com', 'arxiv.org',
+      'docs.python.org', 'developer.mozilla.org', 'geeksforgeeks.org',
+      'medium.com', 'openai.com', 'cloud.google.com', 'aws.amazon.com',
+      'pypi.org', 'zhihu.com', 'csdn.net', 'baidu.com', 'jianshu.com',
+      'oschina.net', 'raw.githubusercontent.com'
+    ];
+    
+    const hostname = parsed.hostname.toLowerCase();
+    const isTrusted = trustedDomains.some(domain => 
+      hostname === domain || hostname.endsWith('.' + domain)
+    );
+    
+    if (!isTrusted) {
+      // Add with warning but don't block
+      pendingLinks.push(url);
+      inp.value = "";
+      renderLinkList();
+      showToast("⚠️", `Added link (domain may not be trusted: ${hostname})`, "warning");
+      return;
+    }
+    
+  } catch (e) {
+    showToast("❌", "Invalid URL format", "error");
+    return;
+  }
+  
   pendingLinks.push(url);
   inp.value = "";
   renderLinkList();
@@ -490,7 +529,31 @@ async function ingestLinks() {
     showToast("❌", data.error || "Link ingest failed", "error");
     return;
   }
-  showToast("✅", `Ingested ${data.ingested.length} link(s)`, "success");
+  
+  // Handle ingestion results
+  const ingestedCount = data.ingested?.length || 0;
+  const rejectedCount = data.rejected?.length || 0;
+  
+  if (ingestedCount > 0 && rejectedCount === 0) {
+    // All links ingested successfully
+    showToast("✅", `Ingested ${ingestedCount} link(s)`, "success");
+  } else if (ingestedCount > 0 && rejectedCount > 0) {
+    // Some succeeded, some failed
+    showToast("⚠️", `Ingested ${ingestedCount} link(s), ${rejectedCount} rejected`, "warning");
+    console.warn("Rejected links:", data.rejected);
+  } else if (rejectedCount > 0) {
+    // All links rejected
+    const reasons = data.rejected.map(r => {
+      const url = new URL(r.url).hostname;
+      if (r.reason === "untrusted_or_invalid") return `${url}: Not in trusted domain list`;
+      if (r.reason === "fetch_failed") return `${url}: Could not fetch page`;
+      if (r.reason === "no_sections_extracted") return `${url}: No content found`;
+      return `${url}: ${r.reason}`;
+    }).join("\n");
+    showToast("❌", `All links rejected:\n${reasons}`, "error");
+    return; // Don't clear pending links
+  }
+  
   pendingLinks = [];
   renderLinkList();
   loadDocuments(); // refresh sidebar

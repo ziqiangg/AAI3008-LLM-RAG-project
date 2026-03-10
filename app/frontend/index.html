@@ -56,8 +56,13 @@
   <div class="sidebar-section-title">Link Sources</div>
 
   <div class="link-add-row">
-    <input id="link-input" type="text" placeholder="Paste a trusted https:// link…" />
+    <input id="link-input" type="text" 
+           placeholder="Paste a trusted https:// link…" 
+           title="Trusted domains: Wikipedia, MDN, Stack Overflow, GitHub, arXiv, Python Docs, Google Cloud, AWS, OpenAI, GeeksforGeeks, PyPI, Medium, Zhihu, CSDN, Baidu, Jianshu" />
     <button id="add-link-btn" onclick="addLink()">Add</button>
+  </div>
+  <div style="font-size:10px; color:var(--text-muted); padding:2px 8px; margin-top:-4px">
+    ℹ️ Only trusted domains accepted (hover input for list)
   </div>
 
   <div id="link-list" class="link-list"></div>
