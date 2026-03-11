@@ -384,7 +384,20 @@ async function loadSession(sessionId) {
     // Track the last sources from assistant messages
     let lastSources = null;
     (data.messages || []).forEach(m => {
-      appendMessage(m.role === 'user' ? 'user' : 'bot', null, m.content);
+      // Check for rewrite metadata in user messages
+      let rewriteMetadata = null;
+      if (m.role === 'user' && m.sources && m.sources.query_rewritten) {
+        rewriteMetadata = {
+          query_rewritten: m.sources.query_rewritten,
+          original_query: m.sources.original_query,
+          rewritten_query: m.sources.rewritten_query,
+          rewrite_strategy: m.sources.rewrite_strategy,
+          score_improvement: m.sources.score_improvement
+        };
+      }
+      
+      appendMessage(m.role === 'user' ? 'user' : 'bot', null, m.content, false, rewriteMetadata);
+      
       // Extract sources from assistant messages
       if (m.role === 'assistant' && m.sources) {
         lastSources = m.sources;
@@ -969,7 +982,8 @@ async function sendQuery() {
 
   await ensureSession();
 
-  appendMessage('user', null, query);
+  // Initially append user message without rewrite metadata
+  const userMsgId = appendMessage('user', null, query);
   textarea.value = ''; autoResize(textarea);
   //loading messages
   const loadingId = appendMessage('bot', null, 'Thinking…', true);
@@ -988,6 +1002,45 @@ async function sendQuery() {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
+    
+    // If query was rewritten, inject the rewrite dropdown into the existing user message
+    if (data.metadata && data.metadata.query_rewritten) {
+      const userMsgEl = document.getElementById(userMsgId);
+      if (userMsgEl) {
+        const rewriteHtml = `
+          <div class="query-rewrite-toggle" onclick="toggleRewriteDetails('${userMsgId}')">
+            <span class="rewrite-icon">✨</span>
+            <span class="rewrite-label">Query was rewritten</span>
+            <span class="rewrite-arrow">▼</span>
+          </div>
+          <div class="query-rewrite-details" id="${userMsgId}-rewrite" style="display: none;">
+            <div class="rewrite-detail-item">
+              <div class="rewrite-detail-label">Original:</div>
+              <div class="rewrite-detail-value">${escapeHtml(data.metadata.original_query)}</div>
+            </div>
+            <div class="rewrite-detail-item">
+              <div class="rewrite-detail-label">Rewritten to:</div>
+              <div class="rewrite-detail-value">${escapeHtml(data.metadata.rewritten_query)}</div>
+            </div>
+            <div class="rewrite-detail-item">
+              <div class="rewrite-detail-label">Strategy:</div>
+              <div class="rewrite-detail-value"><span class="rewrite-strategy-badge">${escapeHtml(data.metadata.rewrite_strategy)}</span></div>
+            </div>
+            ${data.metadata.score_improvement !== undefined && data.metadata.score_improvement !== null ? `
+            <div class="rewrite-detail-item">
+              <div class="rewrite-detail-label">Improvement:</div>
+              <div class="rewrite-detail-value rewrite-score-positive">+${data.metadata.score_improvement.toFixed(2)}</div>
+            </div>` : ''}
+          </div>`;
+        
+        // Append rewrite dropdown after the message text
+        const messageBody = userMsgEl.querySelector('.message-body');
+        if (messageBody) {
+          messageBody.insertAdjacentHTML('beforeend', rewriteHtml);
+        }
+      }
+    }
+    
     const answer = data.answer || data.response || data.message || JSON.stringify(data);
     const toolHtml = renderToolPanel(data.tool || null);
     updateMessage(loadingId, answer, toolHtml);
@@ -1005,18 +1058,50 @@ async function sendQuery() {
 // ══════════════════════════════════════════════
 // MESSAGE HELPERS
 // ══════════════════════════════════════════════
-function appendMessage(role, docName, text, isLoading = false) {
+function appendMessage(role, docName, text, isLoading = false, rewriteMetadata = null) {
   const id  = `msg-${++msgCounter}`;
   const win = document.getElementById('chat-window');
   const isUser = role === 'user';
   const div = document.createElement('div');
   div.className = 'message'; div.id = id;
+  
+  // Build rewrite metadata HTML if query was rewritten
+  let rewriteHtml = '';
+  if (isUser && rewriteMetadata && rewriteMetadata.query_rewritten) {
+    rewriteHtml = `
+      <div class="query-rewrite-toggle" onclick="toggleRewriteDetails('${id}')">
+        <span class="rewrite-icon">✨</span>
+        <span class="rewrite-label">Query was rewritten</span>
+        <span class="rewrite-arrow">▼</span>
+      </div>
+      <div class="query-rewrite-details" id="${id}-rewrite" style="display: none;">
+        <div class="rewrite-detail-item">
+          <div class="rewrite-detail-label">Original:</div>
+          <div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.original_query)}</div>
+        </div>
+        <div class="rewrite-detail-item">
+          <div class="rewrite-detail-label">Rewritten to:</div>
+          <div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.rewritten_query || text)}</div>
+        </div>
+        <div class="rewrite-detail-item">
+          <div class="rewrite-detail-label">Strategy:</div>
+          <div class="rewrite-detail-value"><span class="rewrite-strategy-badge">${escapeHtml(rewriteMetadata.rewrite_strategy || 'auto')}</span></div>
+        </div>
+        ${rewriteMetadata.score_improvement !== undefined && rewriteMetadata.score_improvement !== null ? `
+        <div class="rewrite-detail-item">
+          <div class="rewrite-detail-label">Improvement:</div>
+          <div class="rewrite-detail-value rewrite-score-positive">+${rewriteMetadata.score_improvement.toFixed(2)}</div>
+        </div>` : ''}
+      </div>`;
+  }
+  
   div.innerHTML = `
     <div class="avatar ${isUser ? 'user' : 'bot'}">${isUser ? '👤' : '🤖'}</div>
     <div class="message-body">
       <div class="message-role">${isUser ? 'You' : 'RAG Assistant'}</div>
       ${docName ? `<div class="message-doc-badge">📄 ${escapeHtml(docName)}</div>` : ''}
       <div class="message-text ${isLoading ? 'loading' : ''} ${isUser ? 'plain' : 'md'}">${isUser ? escapeHtml(text) : renderMarkdown(text)}</div>
+      ${rewriteHtml}
     </div>`;
   win.appendChild(div);
   win.scrollTop = win.scrollHeight;
@@ -1033,6 +1118,18 @@ function updateMessage(id, text, toolHtml = '') {
     initMermaidInElement(textEl);
   }
   return msgEl;  // return the message div for KaTeX re-render etc.
+}
+
+function toggleRewriteDetails(messageId) {
+  const detailsEl = document.getElementById(`${messageId}-rewrite`);
+  const toggleEl = document.querySelector(`#${messageId} .query-rewrite-toggle`);
+  const arrowEl = toggleEl ? toggleEl.querySelector('.rewrite-arrow') : null;
+  
+  if (detailsEl && arrowEl) {
+    const isVisible = detailsEl.style.display !== 'none';
+    detailsEl.style.display = isVisible ? 'none' : 'block';
+    arrowEl.textContent = isVisible ? '▼' : '▲';
+  }
 }
 
 // ══════════════════════════════════════════════

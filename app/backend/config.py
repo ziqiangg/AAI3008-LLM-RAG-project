@@ -240,6 +240,29 @@ ACADEMIC INTEGRITY:
     # Classification thresholds
     SUBJECT_SIMILARITY_THRESHOLD = 0.35  # Minimum similarity for subject classification
     TOPIC_SIMILARITY_THRESHOLD = 0.30    # Minimum similarity for topic classification
+    
+    # ════════════════════════════════════════════════════════════════
+    # QUERY REWRITING CONFIGURATION
+    # ════════════════════════════════════════════════════════════════
+    
+    # Enable/disable query rewriting feature
+    QUERY_REWRITE_ENABLED = True
+    
+    # Score thresholds for adaptive query rewriting
+    # Reranking scores typically range from -5 to +12 (model-dependent)
+    # These thresholds determine when to trigger query rewriting
+    RERANK_QUALITY_THRESHOLD_EXCELLENT = 5.0   # >= 5.0: Excellent, no rewrite needed
+    RERANK_QUALITY_THRESHOLD_DECENT = 2.0      # >= 2.0: Decent, consider context fusion if conversational
+    RERANK_QUALITY_THRESHOLD_POOR = 0.5        # < 0.5: Poor, definitely rewrite
+    
+    # Query rewriting strategy configuration
+    QUERY_REWRITE_STRATEGY_AUTO = True         # Auto-select best strategy
+    QUERY_REWRITE_MAX_VARIANTS = 2             # Max query variants for expansion
+    QUERY_REWRITE_CONVERSATION_HISTORY_DEPTH = 4  # Last N messages for context fusion
+    
+    # Query rewriting performance settings
+    QUERY_REWRITE_RETRY_ON_IMPROVEMENT = True  # Only use rewritten if score improves
+    QUERY_REWRITE_MIN_IMPROVEMENT = 0.3        # Minimum score improvement to accept rewrite
 
 
 class DevelopmentConfig(Config):
