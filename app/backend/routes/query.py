@@ -11,6 +11,7 @@ from app.backend.database import get_db_session
 from app.backend.models import Session as ConvSession, Message
 from app.backend.services.injestion import get_embeddings
 from app.backend.services import retrieval, reranking, generation, classification,web_retrieval
+from app.backend.services.query_rewriter import get_query_rewriter
 from app.backend.config import Config
 from app.backend.services.tool_detection import detect_and_generate_tool
 
@@ -62,19 +63,6 @@ def ask_question():
         session_id = data.get('session_id')
         document_ids = data.get('document_ids')
         folder_ids = data.get('folder_ids')  # NEW: filter by folders
-
-        # ── Expand folder_ids → document_ids if provided ─────────
-        folder_ids = data.get('folder_ids')
-        if folder_ids:
-            from app.backend.models import Folder
-            with get_db_session() as _db:
-                extra_ids = [
-                    d.id for d in _db.query(__import__('app.backend.models', fromlist=['Document']).Document)
-                    .join(Folder, __import__('app.backend.models', fromlist=['Document']).Document.folder_id == Folder.id)
-                    .filter(Folder.id.in_(folder_ids))
-                    .all()
-                ]
-            document_ids = list(set((document_ids or []) + extra_ids))
 
         # NEW: web toggle + explicit ask detection (only triggers web lane)
         web_toggle = bool(data.get('web_search', False))
@@ -234,9 +222,161 @@ def ask_question():
                 logger.warning(f"[Query] Unified reranking failed, using top retrieval results: {e}")
                 final_context_chunks = all_chunks[:Config.RERANK_TOP_K]
 
+            # ═══════════════════════════════════════════════════════════
+            # 6a. ADAPTIVE QUERY REWRITING (Phase 1 & 2)
+            #     Triggered when relevance scores are low or conversational context needed
+            # ═══════════════════════════════════════════════════════════
+            # Initialize rewriting tracking variables (always set to avoid UnboundLocalError)
+            original_question = question  # Preserve original for logging
+            query_was_rewritten = False
+            rewrite_strategy_used = None
+            original_avg_score = 0.0
+            rewritten_avg_score = 0.0
+            
+            logger.warning(f"[QueryRewrite] Config.QUERY_REWRITE_ENABLED = {Config.QUERY_REWRITE_ENABLED}")
+            
+            if Config.QUERY_REWRITE_ENABLED and final_context_chunks:
+                # Calculate average rerank score to assess retrieval quality
+                avg_rerank_score = (
+                    sum(c.get('rerank_score', 0) for c in final_context_chunks) / len(final_context_chunks)
+                    if final_context_chunks else 0.0
+                )
+                logger.warning(f"[QueryRewrite] Feature enabled, checking scores...")
+                logger.warning(f"[QueryRewrite] Average rerank score: {avg_rerank_score:.2f}")
+                logger.warning(f"[QueryRewrite] Thresholds - Poor: {Config.RERANK_QUALITY_THRESHOLD_POOR}, Decent: {Config.RERANK_QUALITY_THRESHOLD_DECENT}")
+                logger.warning(f"[QueryRewrite] Conversation history messages: {len(conversation_history) if conversation_history else 0}")
+                
+                # Determine if query rewriting is needed
+                needs_rewrite = False
+                rewrite_reason = ""
+                
+                if avg_rerank_score < Config.RERANK_QUALITY_THRESHOLD_POOR:
+                    # Critical: Very low scores, definitely rewrite
+                    needs_rewrite = True
+                    rewrite_reason = f"low relevance (avg={avg_rerank_score:.2f} < {Config.RERANK_QUALITY_THRESHOLD_POOR})"
+                    logger.warning(f"[QueryRewrite] {rewrite_reason}")
+                    
+                elif avg_rerank_score < Config.RERANK_QUALITY_THRESHOLD_DECENT:
+                    # Moderate scores: Check if conversational context could help
+                    if conversation_history and len(conversation_history) >= 2:
+                        needs_rewrite = True
+                        rewrite_reason = f"moderate relevance with conversation (avg={avg_rerank_score:.2f} < {Config.RERANK_QUALITY_THRESHOLD_DECENT})"
+                        logger.info(f"[QueryRewrite] {rewrite_reason}")
+                
+                if needs_rewrite:
+                    try:
+                        query_rewriter = get_query_rewriter()
+                        
+                        # Select rewriting strategy
+                        if Config.QUERY_REWRITE_STRATEGY_AUTO:
+                            strategy = query_rewriter.analyze_query_needs(
+                                query=question,
+                                conversation_history=conversation_history,
+                                avg_rerank_score=avg_rerank_score
+                            )
+                            logger.warning(f"[QueryRewrite] Auto-selected strategy: {strategy}")
+                        else:
+                            # Default to conversation context fusion
+                            strategy = 'conversation_context'
+                        
+                        # Apply rewriting strategy
+                        rewritten_query = None
+                        
+                        if strategy == 'conversation_context':
+                            rewritten_query = query_rewriter.rewrite_with_conversation_context(
+                                current_query=question,
+                                conversation_history=conversation_history
+                            )
+                        elif strategy == 'expansion':
+                            variants = query_rewriter.expand_query_with_synonyms(
+                                original_query=question,
+                                num_variants=Config.QUERY_REWRITE_MAX_VARIANTS
+                            )
+                            # For now, use first variant (future: multi-variant retrieval)
+                            rewritten_query = variants[0] if variants else question
+                        elif strategy == 'decomposition':
+                            sub_questions = query_rewriter.decompose_complex_query(question)
+                            # For now, use first sub-question (future: multi-query retrieval)
+                            rewritten_query = sub_questions[0] if sub_questions else question
+                        elif strategy == 'hyde':
+                            hypothetical_doc = query_rewriter.generate_hypothetical_document(question)
+                            # Embed the hypothetical document instead of query
+                            rewritten_query = hypothetical_doc
+                        else:
+                            rewritten_query = question
+                        
+                        # If query was actually rewritten, retry retrieval
+                        if rewritten_query and rewritten_query != question:
+                            logger.warning(f"[QueryRewrite] Retrying retrieval with rewritten query")
+                            logger.warning(f"  Original: {question}")
+                            logger.warning(f"  Rewritten: {rewritten_query[:200]}..." if len(rewritten_query) > 200 else f"  Rewritten: {rewritten_query}")
+                            
+                            # Re-embed rewritten query
+                            embeddings_model = get_embeddings()
+                            rewritten_embedding = embeddings_model.embed_query(rewritten_query)
+                            
+                            # Re-retrieve with rewritten query
+                            retry_chunks = retrieval.retrieve_relevant_chunks(
+                                db_session=db,
+                                question_embedding=rewritten_embedding,
+                                document_ids=document_ids,
+                                top_k=Config.TOP_K_RETRIEVAL
+                            )
+                            
+                            # Re-rank with rewritten query
+                            retry_final = reranking.rerank_chunks(
+                                question=rewritten_query,
+                                chunks=retry_chunks + web_chunks,  # Include web chunks in reranking
+                                top_k=Config.RERANK_TOP_K
+                            )
+                            
+                            # Calculate new average score
+                            retry_avg_score = (
+                                sum(c.get('rerank_score', 0) for c in retry_final) / len(retry_final)
+                                if retry_final else 0.0
+                            )
+                            
+                            # Store scores for metadata tracking
+                            original_avg_score = avg_rerank_score
+                            rewritten_avg_score = retry_avg_score
+                            
+                            # Compare scores and decide whether to use rewritten version
+                            improvement = retry_avg_score - avg_rerank_score
+                            logger.warning(f"[QueryRewrite] Score comparison: original={avg_rerank_score:.2f}, rewritten={retry_avg_score:.2f}, improvement={improvement:.2f}")
+                            
+                            if Config.QUERY_REWRITE_RETRY_ON_IMPROVEMENT:
+                                # Only use rewritten if it improves score
+                                if improvement >= Config.QUERY_REWRITE_MIN_IMPROVEMENT:
+                                    logger.warning(f"[QueryRewrite] ✓ Accepting rewritten query (improvement: +{improvement:.2f})")
+                                    final_context_chunks = retry_final
+                                    question = rewritten_query  # Use rewritten for LLM prompt
+                                    query_was_rewritten = True
+                                    rewrite_strategy_used = strategy
+                                else:
+                                    logger.warning(f"[QueryRewrite] ✗ Keeping original query (insufficient improvement: +{improvement:.2f})")
+                            else:
+                                # Always use rewritten version
+                                logger.warning(f"[QueryRewrite] Using rewritten query (retry_on_improvement=False)")
+                                final_context_chunks = retry_final
+                                question = rewritten_query
+                                query_was_rewritten = True
+                                rewrite_strategy_used = strategy
+                        else:
+                            logger.debug(f"[QueryRewrite] Query unchanged after rewriting attempt")
+                    
+                    except Exception as rewrite_err:
+                        logger.error(f"[QueryRewrite] Rewriting failed: {rewrite_err}", exc_info=True)
+                        # Continue with original query
+                else:
+                    logger.info(f"[QueryRewrite] Not triggered - Score too high (avg={avg_rerank_score:.2f} >= {Config.RERANK_QUALITY_THRESHOLD_DECENT})")
+            else:
+                if not Config.QUERY_REWRITE_ENABLED:
+                    logger.info(f"[QueryRewrite] Feature is DISABLED in config")
+                elif not final_context_chunks:
+                    logger.info(f"[QueryRewrite] Skipped - No chunks retrieved")
             
             # ═══════════════════════════════════════════════════════════
-            # 6. SUBJECT CLASSIFICATION
+            # 6b. SUBJECT CLASSIFICATION
             # ═══════════════════════════════════════════════════════════
             subject_context = classification.extract_subject_context(final_context_chunks)
             logger.info(
@@ -299,11 +439,25 @@ def ask_question():
             # ═══════════════════════════════════════════════════════════
             # 8. STORE MESSAGES IN DATABASE (if session exists)
             # ═══════════════════════════════════════════════════════════
+            # 8. STORE MESSAGES IN DATABASE (if session exists)
+            # ═══════════════════════════════════════════════════════════
             if session_id:
+                # Store user message with rewrite metadata
+                user_msg_metadata = None
+                if query_was_rewritten:
+                    user_msg_metadata = {
+                        'query_rewritten': True,
+                        'original_query': original_question,
+                        'rewritten_query': question,
+                        'rewrite_strategy': rewrite_strategy_used,
+                        'score_improvement': rewritten_avg_score - original_avg_score
+                    }
+                
                 user_msg = Message(
                     session_id=session_id,
                     role='user',
-                    content=question
+                    content=question,  # Store the final query (rewritten if applicable)
+                    sources=user_msg_metadata  # Store rewrite metadata in sources field
                 )
                 db.add(user_msg)
 
@@ -348,7 +502,13 @@ def ask_question():
                     'num_web_chunks': num_web_chunks,
                     'num_context_messages': len(conversation_history),
                     'finish_reason': result.get('finish_reason', 'COMPLETED'),
-                    'web_enabled': web_enabled
+                    'web_enabled': web_enabled,
+                    # Query rewriting metrics
+                    'query_rewritten': query_was_rewritten,
+                    'rewrite_strategy': rewrite_strategy_used,
+                    'original_query': original_question if query_was_rewritten else None,
+                    'rewritten_query': question if query_was_rewritten else None,
+                    'score_improvement': (rewritten_avg_score - original_avg_score) if query_was_rewritten else None
                 }
             }), 200
 

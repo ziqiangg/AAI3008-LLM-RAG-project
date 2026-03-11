@@ -10,21 +10,13 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
-<<<<<<< Updated upstream
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <link rel="stylesheet" href="styles.css">
-=======
   <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
->>>>>>> Stashed changes
   <script defer src="app.js"></script>
 </head>
 <body>
 
-<<<<<<< Updated upstream
-=======
 <!-- ── LEFT SIDEBAR ── -->
->>>>>>> Stashed changes
 <aside id="sidebar">
   <div class="sidebar-header">
     <span class="logo">🎓</span>
@@ -36,26 +28,6 @@
 
   <button id="new-chat-btn" onclick="newChat()">&#43;&nbsp; New Chat</button>
 
-<<<<<<< Updated upstream
-  <div class="sidebar-upload-row">
-    <button id="add-doc-btn" onclick="triggerSidebarUpload()">📎&nbsp; Add document</button>
-    <button class="icon-btn-folder" onclick="openCreateFolderModal()" title="New Folder">📁+</button>
-  </div>
-  <input type="file" id="sidebar-file-input" accept=".pdf,.docx,.pptx,.txt" style="display:none" onchange="onSidebarFileSelected(event)">
-
-  <div class="scope-bar" id="scope-bar">
-    <span class="scope-label">💬 Scope:</span>
-    <span id="scope-status" class="scope-status">All documents</span>
-    <button class="scope-edit-btn" onclick="openScopeModal()" title="Change scope">✏️</button>
-  </div>
-
-  <div class="sidebar-section-title">
-    Folders &amp; Documents
-    <button class="mini-btn" onclick="openCreateFolderModal()">+ Folder</button>
-  </div>
-
-  <div id="docs-folders-list">
-=======
   <div class="sidebar-action-row">
     <button class="sidebar-action-btn" onclick="triggerSidebarUpload()" title="Upload document">
       <span>📎</span> Upload
@@ -72,24 +44,11 @@
   </div>
 
   <div id="docs-tree" class="docs-tree">
->>>>>>> Stashed changes
     <div style="font-size:12px; color:var(--text-muted); padding:8px 4px">No documents yet</div>
   </div>
 
   <div class="sidebar-section-title">Link Sources</div>
   <div class="link-add-row">
-<<<<<<< Updated upstream
-    <input id="link-input" type="text" placeholder="Paste a trusted https:// link…" title="Trusted domains: Wikipedia, MDN, Stack Overflow, GitHub, arXiv, Python Docs, Google Cloud, AWS, OpenAI, GeeksforGeeks, PyPI, Medium, Zhihu, CSDN, Baidu, Jianshu" />
-    <button id="add-link-btn" onclick="addLink()">Add</button>
-  </div>
-  <div style="font-size:10px; color:var(--text-muted); padding:2px 8px; margin-top:-4px">ℹ️ Only trusted domains accepted</div>
-  <div id="link-list" class="link-list"></div>
-  <button id="ingest-links-btn" onclick="ingestLinks()">Ingest Links</button>
-
-  <div class="sidebar-footer">Backend&nbsp;<span id="api-url">localhost:5000</span></div>
-</aside>
-
-=======
     <input id="link-input" type="text" placeholder="Paste https:// link…"
            title="Trusted domains: Wikipedia, MDN, Stack Overflow, GitHub, arXiv, Python Docs" />
     <button id="add-link-btn" onclick="addLink()">Add</button>
@@ -106,7 +65,6 @@
 </aside>
 
 <!-- ── CENTER MAIN ── -->
->>>>>>> Stashed changes
 <main id="main">
   <div id="topbar">
     <h1>Chat</h1>
@@ -122,11 +80,7 @@
     <div id="welcome">
       <div class="welcome-icon">💬</div>
       <h2>Ask your documents anything</h2>
-<<<<<<< Updated upstream
-      <p>Upload files, organise them into folders, then ask questions. The RAG pipeline retrieves the most relevant chunks and generates an answer.</p>
-=======
       <p>Upload files and organize them into folders.<br>Select folders to scope your conversation, then ask questions.</p>
->>>>>>> Stashed changes
     </div>
   </div>
 
@@ -139,54 +93,6 @@
         <span id="diagram-pill" class="feature-pill" style="display:none;">
           🔀 Diagram <button onclick="selectDiagram()" title="Remove">✕</button>
         </span>
-<<<<<<< Updated upstream
-        <span id="scope-pill" class="feature-pill scope-pill" style="display:none;">
-          📁 <span id="scope-pill-label">Scoped</span>
-          <button onclick="openScopeModal()" title="Edit scope">✏️</button>
-          <button onclick="clearScope()" title="Remove scope">✕</button>
-        </span>
-      </div>
-
-      <div class="input-row">
-        <div class="add-btn-wrap">
-          <button id="add-btn" class="icon-btn add-btn" onclick="toggleAddMenu()" title="Add feature">＋</button>
-          <div id="add-menu" class="add-menu" style="display:none;">
-            <button class="add-menu-item" id="web-menu-item" onclick="selectWebSearch()">
-              <span class="add-menu-icon">🌐</span>
-              <span class="add-menu-text"><strong>Web Search</strong><small>Search trusted sources</small></span>
-              <span id="web-check" class="add-menu-check" style="display:none;">✓</span>
-            </button>
-            <div class="add-menu-divider"></div>
-            <button class="add-menu-item" onclick="selectQuiz()">
-              <span class="add-menu-icon">🧠</span>
-              <span class="add-menu-text"><strong>Generate Quiz</strong><small>Create questions from your docs</small></span>
-            </button>
-            <div class="add-menu-divider"></div>
-            <button class="add-menu-item" id="diagram-menu-item" onclick="selectDiagram()">
-              <span class="add-menu-icon">🔀</span>
-              <span class="add-menu-text"><strong>Generate Diagram</strong><small>Visualize as flowchart or UML</small></span>
-              <span id="diagram-check" class="add-menu-check" style="display:none;">✓</span>
-            </button>
-            <div class="add-menu-divider"></div>
-            <button class="add-menu-item" onclick="openScopeModal(); document.getElementById('add-menu').style.display='none'">
-              <span class="add-menu-icon">📁</span>
-              <span class="add-menu-text"><strong>Select Folders</strong><small>Scope chat to specific folders</small></span>
-            </button>
-          </div>
-        </div>
-
-        <textarea id="query-input" rows="1"
-          placeholder="Ask a question about your documents..."
-          onkeydown="handleKey(event)"
-          oninput="autoResize(this)"></textarea>
-        <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
-      </div>
-    </div>
-    <div class="input-hint">Enter to send · Shift+Enter for new line · Use sidebar to upload documents</div>
-  </div>
-</main>
-
-=======
         <span id="folder-filter-pill" class="feature-pill folder-pill" style="display:none;">
           📁 <span id="folder-filter-pill-text"></span>
           <button onclick="clearFolderScope()" title="Remove folder filter">✕</button>
@@ -231,7 +137,6 @@
 </main>
 
 <!-- ── RIGHT PANEL ── -->
->>>>>>> Stashed changes
 <aside id="right-panel">
   <div class="right-tab-bar">
     <div class="right-tab active" onclick="switchRightTab('sources', this)">Sources</div>
@@ -253,12 +158,7 @@
   </div>
 </aside>
 
-<<<<<<< Updated upstream
-
-<!-- AUTH MODAL -->
-=======
 <!-- ── AUTH MODAL ── -->
->>>>>>> Stashed changes
 <div id="modal-overlay">
   <div id="auth-modal">
     <div class="modal-header">
@@ -309,9 +209,6 @@
   </div>
 </div>
 
-<<<<<<< Updated upstream
-<!-- Quiz Config Modal -->
-=======
 <!-- ── Create / Rename Folder Modal ── -->
 <div id="folder-modal-overlay" class="generic-modal-overlay">
   <div class="generic-modal" style="max-width:380px;">
@@ -344,7 +241,6 @@
 </div>
 
 <!-- ── Quiz Config Modal ── -->
->>>>>>> Stashed changes
 <div id="quiz-modal-overlay">
   <div id="quiz-modal">
     <div class="modal-header">
@@ -372,22 +268,8 @@
       <label>Topic / Focus <span class="label-hint">(optional)</span>
         <input id="quiz-topic" type="text" placeholder="e.g. neural networks, osmosis…" />
       </label>
-<<<<<<< Updated upstream
-      <label>Source Scope
-        <div class="quiz-scope-selector">
-          <button class="scope-option active" id="quiz-scope-all"     onclick="setQuizScope('all')">📚 All Docs</button>
-          <button class="scope-option"        id="quiz-scope-folders" onclick="setQuizScope('folders')">📁 Folders</button>
-          <button class="scope-option"        id="quiz-scope-chat"    onclick="setQuizScope('chat')">💬 Chat Scope</button>
-        </div>
-      </label>
-      <div id="quiz-folder-picker" style="display:none;">
-        <div class="folder-picker-label">Select folders for quiz:</div>
-        <div id="quiz-folder-list" class="folder-check-list"></div>
-      </div>
-=======
       <label>📁 Scope to Folders <span class="label-hint">(optional — leave unchecked for all docs)</span></label>
       <div id="quiz-folder-checklist" class="folder-scope-checklist compact"></div>
->>>>>>> Stashed changes
       <p id="quiz-scope-note" class="quiz-scope-note"></p>
     </div>
     <p id="quiz-error" class="quiz-error"></p>
@@ -395,11 +277,7 @@
   </div>
 </div>
 
-<<<<<<< Updated upstream
-<!-- Quiz View -->
-=======
 <!-- ── Quiz View ── -->
->>>>>>> Stashed changes
 <div id="quiz-view" style="display:none;">
   <div id="quiz-header">
     <div id="quiz-title-bar">
@@ -419,69 +297,5 @@
   </div>
 </div>
 
-<<<<<<< Updated upstream
-<!-- Create / Rename Folder Modal -->
-<div id="folder-modal-overlay" class="modal-overlay-generic" style="display:none;">
-  <div class="generic-modal">
-    <div class="modal-header">
-      <h2 id="folder-modal-title">📁 New Folder</h2>
-      <button onclick="closeFolderModal()">✕</button>
-    </div>
-    <div style="padding:16px;">
-      <label style="display:block; margin-bottom:8px; font-size:13px; color:var(--text-secondary);">Folder name</label>
-      <input id="folder-name-input" type="text" placeholder="e.g. Lecture Notes, Week 1…"
-             style="width:100%; box-sizing:border-box;"
-             onkeydown="if(event.key==='Enter') submitFolderModal()">
-      <div style="margin-top:14px;">
-        <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:6px;">Colour</label>
-        <div id="folder-color-picker" class="color-picker-row"></div>
-      </div>
-    </div>
-    <div style="padding:0 16px 16px; display:flex; gap:8px; justify-content:flex-end;">
-      <button class="btn-secondary" onclick="closeFolderModal()">Cancel</button>
-      <button class="btn-primary"   onclick="submitFolderModal()">Save</button>
-    </div>
-  </div>
-</div>
-
-<!-- Chat Scope Modal -->
-<div id="scope-modal-overlay" class="modal-overlay-generic" style="display:none;">
-  <div class="generic-modal scope-modal">
-    <div class="modal-header">
-      <h2>📁 Chat Scope</h2>
-      <button onclick="closeScopeModal()">✕</button>
-    </div>
-    <div style="padding:14px 16px;">
-      <p style="font-size:13px; color:var(--text-secondary); margin:0 0 12px;">
-        Choose which folders the conversation will refer to. Leave all unchecked to use all documents.
-      </p>
-      <div id="scope-folder-list" class="folder-check-list"></div>
-    </div>
-    <div style="padding:0 16px 16px; display:flex; gap:8px; justify-content:flex-end;">
-      <button class="btn-secondary" onclick="clearScope(); closeScopeModal()">Use All Docs</button>
-      <button class="btn-primary"   onclick="applyScope()">Apply</button>
-    </div>
-  </div>
-</div>
-
-<!-- Move Document Modal -->
-<div id="move-doc-modal-overlay" class="modal-overlay-generic" style="display:none;">
-  <div class="generic-modal">
-    <div class="modal-header">
-      <h2>📂 Move to Folder</h2>
-      <button onclick="closeMoveDocModal()">✕</button>
-    </div>
-    <div style="padding:14px 16px;">
-      <div id="move-doc-folder-list" class="folder-check-list radio-list"></div>
-    </div>
-    <div style="padding:0 16px 16px; display:flex; gap:8px; justify-content:flex-end;">
-      <button class="btn-secondary" onclick="closeMoveDocModal()">Cancel</button>
-      <button class="btn-primary"   onclick="applyMoveDoc()">Move</button>
-    </div>
-  </div>
-</div>
-
-=======
->>>>>>> Stashed changes
 </body>
 </html>

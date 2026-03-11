@@ -81,13 +81,10 @@ def register_blueprints(app):
     app.register_blueprint(documents_bp, url_prefix='/api/documents')
     app.register_blueprint(sessions_bp,  url_prefix='/api/sessions')
     app.register_blueprint(query_bp,     url_prefix='/api/query')
-    app.register_blueprint(quiz_bp,      url_prefix='/api/quiz')
+    app.register_blueprint(quiz_bp,     url_prefix='/api/quiz')
     app.register_blueprint(links_bp,     url_prefix='/api/links')
     app.register_blueprint(folders_bp,   url_prefix='/api/folders')
-<<<<<<< Updated upstream
-=======
 
->>>>>>> Stashed changes
 def register_error_handlers(app):
     @app.errorhandler(404)
     def not_found(error):
