@@ -61,6 +61,7 @@ def ask_question():
         logger.warning(f"[DEBUG] Payload web_search={data.get('web_search')} question='{question[:60]}'")
         session_id = data.get('session_id')
         document_ids = data.get('document_ids')
+        folder_ids = data.get('folder_ids')  # NEW: filter by folders
 
         # ── Expand folder_ids → document_ids if provided ─────────
         folder_ids = data.get('folder_ids')
@@ -137,6 +138,24 @@ def ask_question():
                 # Use session's document_ids if not provided in request
                 if not document_ids and session.document_ids:
                     document_ids = session.document_ids
+
+            # ═══════════════════════════════════════════════════════════
+            # 2b. RESOLVE FOLDER IDS TO DOCUMENT IDS
+            # ═══════════════════════════════════════════════════════════
+            if folder_ids and len(folder_ids) > 0:
+                from app.backend.models import Document as DocModel
+                folder_doc_rows = (
+                    db.query(DocModel.id)
+                    .filter(DocModel.folder_id.in_(folder_ids))
+                    .all()
+                )
+                folder_doc_ids = [r.id for r in folder_doc_rows]
+                if document_ids:
+                    # Intersect: only docs that are both in the specified doc list AND the folders
+                    document_ids = list(set(document_ids) & set(folder_doc_ids))
+                else:
+                    document_ids = folder_doc_ids
+                logger.info(f"[Query] Folder filter applied: folder_ids={folder_ids} → {len(document_ids)} docs")
 
             logger.info(f"[Query] Question: '{question[:50]}...'")
             logger.info(f"[Query] Session: {session_id}, Documents: {document_ids}, History: {len(conversation_history)} msgs")

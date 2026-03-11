@@ -20,8 +20,29 @@ Session = scoped_session(session_factory)
 
 
 def init_db():
+    """
+    Create any missing tables and run lightweight migrations for new columns.
+    Called once on app startup — safe to run repeatedly (idempotent).
+    """
+    from sqlalchemy import text, inspect
+
+    # 1. Create brand-new tables that don't exist yet (e.g. folders)
     Base.metadata.create_all(engine)
-    print("Database tables created successfully!")
+
+    # 2. Add missing columns to EXISTING tables via ALTER TABLE
+    inspector = inspect(engine)
+
+    if 'documents' in inspector.get_table_names():
+        doc_cols = [c['name'] for c in inspector.get_columns('documents')]
+        if 'folder_id' not in doc_cols:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "ALTER TABLE documents ADD COLUMN folder_id INTEGER "
+                    "REFERENCES folders(id) ON DELETE SET NULL"
+                ))
+            print("  ✓ Added folder_id column to documents table")
+
+    print("Database tables synced successfully!")
 
 
 @contextmanager

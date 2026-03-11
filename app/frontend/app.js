@@ -1,14 +1,13 @@
-//RAG Learning Assistant - Main JavaScript
-
+// RAG Learning Assistant - Main JavaScript
 
 const API = 'http://localhost:5000';
 
-// ── Mermaid init ───────────────────────────────────────
 mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 
 let webSearchEnabled = false;
 let diagramEnabled = false;
 
+<<<<<<< Updated upstream
 // ── Folder / Scope state ───────────────────────
 let folders          = [];          // [{id, name, color, doc_count}]
 let chatScopeFolderIds = [];        // folder IDs selected for chat (empty = all)
@@ -27,94 +26,51 @@ const FOLDER_COLORS = [
 ];
 
 // ── State ─────────────────────────────────────
+=======
+// ── State ─────────────────────────────────
+>>>>>>> Stashed changes
 let messages       = [];
 let msgCounter     = 0;
-let authMode       = 'login';   // 'login' | 'register'
-let currentUser    = null;      // { id, username, email }
+let authMode       = 'login';
+let currentUser    = null;
 let currentToken   = localStorage.getItem('rag_token') || null;
-let currentSession = null;      // active session id
-let toastTimeout   = null;      // toast notification timer
-let stageTimer     = null;      // loading stage progress timer
+let currentSession = null;
+let toastTimeout   = null;
+let stageTimer     = null;
 
-// ── Bootstrap ─────────────────────────────────
+// Folder state
+let folders          = [];
+let scopedFolderIds  = [];
+let folderModalMode  = 'create';
+let folderModalId    = null;
+let collapsedFolders = new Set();
+
+let activeSource = null;
+
+const SUBJECT_COLORS = {
+  'Math': '#3b82f6', 'Computer Science': '#10b981',
+  'Artificial Intelligence': '#8b5cf6', 'Physics': '#ef4444',
+  'Chemistry': '#f59e0b', 'Biology': '#14b8a6',
+  'Language Learning': '#ec4899', 'Geography': '#84cc16',
+  'Economics': '#06b6d4', 'Social Studies': '#f97316',
+  'Computer Systems': '#6366f1', 'General': '#6b7280'
+};
+
+const VALID_SUBJECTS = [
+  'Math', 'Computer Science', 'Artificial Intelligence', 'Physics',
+  'Chemistry', 'Biology', 'Language Learning', 'Geography',
+  'Economics', 'Social Studies', 'Computer Systems', 'General'
+];
+
+window._docsById = {};
+window._docIdByFilename = {};
+
+// ── Bootstrap ─────────────────────────────
 window.addEventListener('load', () => {
   loadDocuments();
   if (currentToken) restoreSession();
   loadFolders();
 });
-
-// ══════════════════════════════════════════════
-// HEALTH CHECK (Optional - removed from bootstrap)
-// ══════════════════════════════════════════════
-async function checkHealth() {
-  try {
-    const res = await fetch(`${API}/api/health`);
-    if (res.ok) {
-      console.log('✓ Backend is healthy');
-      return true;
-    }
-  } catch (e) {
-    console.warn('Backend health check failed:', e);
-    return false;
-  }
-}
-
-let activeSource = null;
-
-// Subject classification constants
-const SUBJECT_COLORS = {
-  'Math': '#3b82f6',
-  'Computer Science': '#10b981',
-  'Artificial Intelligence': '#8b5cf6',
-  'Physics': '#ef4444',
-  'Chemistry': '#f59e0b',
-  'Biology': '#14b8a6',
-  'Language Learning': '#ec4899',
-  'Geography': '#84cc16',
-  'Economics': '#06b6d4',
-  'Social Studies': '#f97316',
-  'Computer Systems': '#6366f1',
-  'General': '#6b7280'
-};
-
-const VALID_SUBJECTS = [
-  'Math', 'Computer Science', 'Artificial Intelligence', 'Physics', 
-  'Chemistry', 'Biology', 'Language Learning', 'Geography', 
-  'Economics', 'Social Studies', 'Computer Systems', 'General'
-];
-
-// Keep doc maps so Sources can open the right doc
-window._docsById = {};
-window._docIdByFilename = {};
-
-function setActiveSource(i) {
-  const sources = (window._lastSources || []);
-  activeSource = sources[i] || null;
-
-  // Visually mark active source
-  document.querySelectorAll('.source-card').forEach((el, idx) => {
-    el.classList.toggle('active', idx === i);
-  });
-
-  // Auto-open the document + highlight the chunk
-  if (activeSource) {
-    const docId =
-      activeSource.doc_id ||
-      (activeSource.filename ? window._docIdByFilename[activeSource.filename] : null);
-
-    if (docId) {
-      const filename = activeSource.filename || (window._docsById[docId]?.filename ?? `Document ${docId}`);
-      previewDoc(docId, filename, {
-        chunkOrder: activeSource.chunk_order ?? null,
-        needle: activeSource.content || activeSource.snippet || ""
-      });
-    } else {
-      showToast('✅', 'Source selected. (No doc_id/filename mapping found to auto-open preview.)', 'success');
-    }
-  } else {
-    showToast('✅', 'No source selected', 'success');
-  }
-}
 
 // ══════════════════════════════════════════════
 // AUTH
@@ -124,57 +80,42 @@ function openAuthModal() {
   document.getElementById('modal-overlay').classList.add('visible');
   document.getElementById('auth-error').textContent = '';
 }
-
-function closeAuthModal() {
-  document.getElementById('modal-overlay').classList.remove('visible');
-}
-
-// Close on backdrop click
+function closeAuthModal() { document.getElementById('modal-overlay').classList.remove('visible'); }
 document.getElementById('modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('modal-overlay')) closeAuthModal();
 });
-
 function switchAuthTab(mode) {
   authMode = mode;
   const isLogin = mode === 'login';
-  document.getElementById('tab-login-btn').classList.toggle('active',    isLogin);
+  document.getElementById('tab-login-btn').classList.toggle('active', isLogin);
   document.getElementById('tab-register-btn').classList.toggle('active', !isLogin);
-  document.getElementById('modal-title').textContent   = isLogin ? 'Welcome back' : 'Create account';
-  document.getElementById('auth-submit').textContent   = isLogin ? 'Login' : 'Register';
+  document.getElementById('modal-title').textContent = isLogin ? 'Welcome back' : 'Create account';
+  document.getElementById('auth-submit').textContent = isLogin ? 'Login' : 'Register';
   document.getElementById('auth-username').style.display = isLogin ? 'none' : '';
   document.getElementById('auth-error').textContent = '';
 }
 
 async function submitAuth() {
-  const btn      = document.getElementById('auth-submit');
-  const errEl    = document.getElementById('auth-error');
-  const email    = document.getElementById('auth-email').value.trim();
+  const btn = document.getElementById('auth-submit');
+  const errEl = document.getElementById('auth-error');
+  const email = document.getElementById('auth-email').value.trim();
   const password = document.getElementById('auth-password').value;
   const username = document.getElementById('auth-username').value.trim();
-
   errEl.textContent = '';
   if (!email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
-
   btn.disabled = true;
   btn.textContent = authMode === 'login' ? 'Logging in…' : 'Registering…';
-
   try {
-    const body  = authMode === 'login'
-      ? { email, password }
-      : { email, password, username };
-    const res   = await fetch(`${API}/api/users/${authMode}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const body = authMode === 'login' ? { email, password } : { email, password, username };
+    const res = await fetch(`${API}/api/users/${authMode}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const data  = await res.json();
-
+    const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error || 'Something went wrong.'; return; }
-
-    // Success
-    currentToken = data.token;
-    currentUser  = data.user;
+    currentToken = data.token; currentUser = data.user;
     localStorage.setItem('rag_token', currentToken);
+<<<<<<< Updated upstream
     
     // Always clear fields after request is sent
     email.value = '';
@@ -185,19 +126,19 @@ async function submitAuth() {
     loadSessions();
     loadDocuments();
     loadFolders();
+=======
+    closeAuthModal(); updateAuthButton(); loadSessions(); loadDocuments();
+>>>>>>> Stashed changes
     showToast('👋', `Welcome, ${currentUser.username}!`, 'success');
-  } catch {
-    errEl.textContent = 'Could not reach the backend.';
-  } finally {
-    btn.disabled = false;
-    btn.textContent = authMode === 'login' ? 'Login' : 'Register';
-  }
+  } catch { errEl.textContent = 'Could not reach the backend.'; }
+  finally { btn.disabled = false; btn.textContent = authMode === 'login' ? 'Login' : 'Register'; }
 }
 
 async function restoreSession() {
   try {
-    const res  = await authFetch('/api/users/me');
+    const res = await authFetch('/api/users/me');
     const data = await res.json();
+<<<<<<< Updated upstream
     if (res.ok) {
       currentUser = data.user;
       updateAuthButton();
@@ -206,101 +147,63 @@ async function restoreSession() {
     } else {
       logout();
     }
+=======
+    if (res.ok) { currentUser = data.user; updateAuthButton(); loadSessions(); loadDocuments(); }
+    else { logout(); }
+>>>>>>> Stashed changes
   } catch { logout(); }
 }
 
 function logout() {
   currentToken = null; currentUser = null;
-  const email    = document.getElementById('auth-email');
-  const password = document.getElementById('auth-password');
-  const username = document.getElementById('auth-username');
-  email.value = '';
-  password.value = '';
-  username.value = '';
   localStorage.removeItem('rag_token');
   updateAuthButton();
-  // Reload page to clear all state and return to clean login screen
   setTimeout(() => window.location.reload(), 100);
-  document.getElementById('session-list').innerHTML =
-    `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px 8px">Log in to view your session history.</div>`;
-  showToast('👋', 'Logged out.', '');
-
-  const list = document.getElementById('docs-list');
-  list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">
-    Log in to view your documents.
-  </div>`;
 }
 
 function updateAuthButton() {
-  const icon  = document.getElementById('auth-btn-icon');
+  const icon = document.getElementById('auth-btn-icon');
   const label = document.getElementById('auth-btn-label');
   if (currentUser) {
-    icon.textContent  = '';
-    // Show first letter avatar
     icon.innerHTML = `<span class="auth-avatar">${currentUser.username[0].toUpperCase()}</span>`;
     label.textContent = currentUser.username;
-  } else {
-    icon.textContent  = '🔑';
-    label.textContent = 'Login';
-  }
+  } else { icon.textContent = '🔑'; label.textContent = 'Login'; }
 }
 
 function showUserMenu() {
-  // Toggle: close if already open
   const existing = document.getElementById('user-dropdown');
   if (existing) { existing.remove(); return; }
-
   const btn = document.getElementById('auth-btn');
   const rect = btn.getBoundingClientRect();
-
   const dropdown = document.createElement('div');
-  dropdown.id = 'user-dropdown';
-  dropdown.className = 'user-dropdown';
-  dropdown.style.top  = (rect.bottom + window.scrollY + 8) + 'px';
+  dropdown.id = 'user-dropdown'; dropdown.className = 'user-dropdown';
+  dropdown.style.top = (rect.bottom + 8) + 'px';
   dropdown.style.right = (window.innerWidth - rect.right) + 'px';
   dropdown.innerHTML = `
     <button class="user-dropdown-item" onclick="confirmLogout()">🚪 Logout</button>
     <div class="user-dropdown-divider"></div>
-    <button class="user-dropdown-item danger" onclick="confirmDeleteAccount()">🗑️ Delete Account</button>
-  `;
+    <button class="user-dropdown-item danger" onclick="confirmDeleteAccount()">🗑️ Delete Account</button>`;
   document.body.appendChild(dropdown);
-
-  // Close when clicking anywhere outside
-  setTimeout(() => document.addEventListener('click', closeUserDropdown, { once: true }), 0);
-}
-
-function closeUserDropdown() {
-  const d = document.getElementById('user-dropdown');
-  if (d) d.remove();
+  setTimeout(() => document.addEventListener('click', () => {
+    const d = document.getElementById('user-dropdown'); if (d) d.remove();
+  }, { once: true }), 0);
 }
 
 function confirmLogout() {
-  closeUserDropdown();
-  if (!confirm('Are you sure you want to log out?')) return;
-  logout();
+  document.getElementById('user-dropdown')?.remove();
+  if (!confirm('Are you sure you want to log out?')) return; logout();
 }
 
 async function confirmDeleteAccount() {
-  closeUserDropdown();
-  if (!confirm(
-    `Delete your account?\n\nThis will permanently remove all your documents, sessions, and messages.\n\nThis action cannot be undone.`
-  )) return;
-
+  document.getElementById('user-dropdown')?.remove();
+  if (!confirm('Delete your account?\n\nAll documents, sessions, and folders will be permanently removed.')) return;
   try {
     const res = await authFetch('/api/users/me', { method: 'DELETE' });
-    if (res.ok) {
-      showToast('🗑️', 'Account deleted. Goodbye!', 'success');
-      setTimeout(() => logout(), 1200);
-    } else {
-      const data = await res.json();
-      showToast('❌', data.error || 'Failed to delete account.', 'error');
-    }
-  } catch {
-    showToast('❌', 'Could not reach the backend.', 'error');
-  }
+    if (res.ok) { showToast('🗑️', 'Account deleted.', 'success'); setTimeout(() => logout(), 1200); }
+    else { const d = await res.json(); showToast('❌', d.error || 'Failed.', 'error'); }
+  } catch { showToast('❌', 'Backend unreachable.', 'error'); }
 }
 
-// Authenticated fetch helper
 async function authFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (currentToken) headers['Authorization'] = `Bearer ${currentToken}`;
@@ -308,7 +211,7 @@ async function authFetch(path, opts = {}) {
 }
 
 // ══════════════════════════════════════════════
-// RIGHT PANEL — TAB SWITCHER
+// RIGHT PANEL
 // ══════════════════════════════════════════════
 function switchRightTab(tab, el) {
   document.querySelectorAll('.right-tab').forEach(t => t.classList.remove('active'));
@@ -323,49 +226,45 @@ function switchRightTab(tab, el) {
 function renderSources(sources) {
   window._lastSources = sources || [];
   activeSource = null;
-
-  const list  = document.getElementById('sources-list');
+  const list = document.getElementById('sources-list');
   const empty = document.getElementById('sources-empty');
-
-  if (!sources || sources.length === 0) {
-    list.innerHTML  = '';
-    empty.style.display = 'block';
-    return;
-  }
+  if (!sources || sources.length === 0) { list.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-
-  // Sort sources by rerank score (highest first) for better UX
-  const sortedSources = [...sources].sort((a, b) => (b.score || 0) - (a.score || 0));
-
-  list.innerHTML = sortedSources.map((s, i) => {
+  const sorted = [...sources].sort((a, b) => (b.score || 0) - (a.score || 0));
+  list.innerHTML = sorted.map((s, i) => {
     const page = s.metadata?.source?.page;
-    const pageDisplay = page != null ? ` • Page ${page}` : '';
-    
-    // Citation label: Show [S{citation_index}] to match LLM references
-    const citationLabel = s.citation_index ? `<span style="background:#2196F3; color:white; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:700; margin-right:6px;">[S${s.citation_index}]</span>` : '';
-    
-    // Extract subject for badge
-    const dominantSubject = s.metadata?.dominant_subject || 'General';
-    const subjectColor = SUBJECT_COLORS[dominantSubject] || SUBJECT_COLORS['General'];
-    const subjectBadge = `<span style="background:${subjectColor}20; color:${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; margin-left:6px;">${dominantSubject}</span>`;
+    const pageDisplay = page != null ? ` · p.${page}` : '';
+    const citationLabel = s.citation_index ? `<span style="background:var(--accent);color:white;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;margin-right:4px;">[S${s.citation_index}]</span>` : '';
     const isWeb = (s.source_type === 'web') || (s.metadata?.source_type === 'web');
     const icon = isWeb ? '🌐' : '📄';
-    const title = isWeb ? (s.title || s.filename || `Web Source ${i+1}`) : (s.filename || s.doc_id || `Source ${i+1}`);
+    const title = isWeb ? (s.title || s.filename || `Web ${i+1}`) : (s.filename || `Source ${i+1}`);
     const url = s.url || s.metadata?.url;
-
-    const clickable = isWeb && url ? `onclick="openWebSource('${url}', ${i})"` : `onclick="setActiveSource(${i})"`;
+    const clickable = isWeb && url ? `onclick="openWebSource('${url}',${i})"` : `onclick="setActiveSource(${i})"`;
     return `
-    <div class="source-card" ${clickable} title="${escapeHtml(s.content || '')}">
-    <div class="source-file">${citationLabel}${icon} ${escapeHtml(title)}${pageDisplay}${subjectBadge}</div>
-    <div class="source-snippet">${escapeHtml((s.content || s.snippet || '').slice(0, 200))}</div>
+    <div class="source-card" ${clickable} title="${escapeHtml(s.content||'')}">
+      <div class="source-file">${citationLabel}${icon} ${escapeHtml(title)}${pageDisplay}</div>
+      <div class="source-snippet">${escapeHtml((s.content||'').slice(0,200))}</div>
       <div class="source-score">
-        <span>${s.score != null ? (s.score * 100).toFixed(0) + '% match' : ''}</span>
+        <span>${s.score != null ? (s.score*100).toFixed(0)+'% match' : ''}</span>
         ${s.score != null ? `<div class="score-bar"><div class="score-fill" style="width:${(s.score*100).toFixed(0)}%"></div></div>` : ''}
       </div>
-    </div>
-  `;
+    </div>`;
   }).join('');
 }
+
+function setActiveSource(i) {
+  const sources = window._lastSources || [];
+  activeSource = sources[i] || null;
+  document.querySelectorAll('.source-card').forEach((el, idx) => el.classList.toggle('active', idx === i));
+  if (activeSource) {
+    const docId = activeSource.doc_id || (activeSource.filename ? window._docIdByFilename[activeSource.filename] : null);
+    if (docId) {
+      const fn = activeSource.filename || (window._docsById[docId]?.filename ?? `Document ${docId}`);
+      previewDoc(docId, fn, { chunkOrder: activeSource.chunk_order ?? null, needle: activeSource.content || '' });
+    }
+  }
+}
+function openWebSource(url, idx) { setActiveSource(idx); window.open(url, '_blank', 'noopener,noreferrer'); }
 
 // ══════════════════════════════════════════════
 // SESSIONS
@@ -373,52 +272,47 @@ function renderSources(sources) {
 async function loadSessions() {
   if (!currentToken) return;
   try {
-    const res  = await authFetch('/api/sessions/');
+    const res = await authFetch('/api/sessions/');
     const data = await res.json();
     const list = document.getElementById('session-list');
     if (!data.sessions?.length) {
-      list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px 8px">No sessions yet. Start a chat!</div>`;
+      list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px 8px">No sessions yet. Start a chat!</div>';
       return;
     }
     list.innerHTML = data.sessions.map(s => `
       <div class="session-item" onclick="loadSession(${s.id})" title="${escapeHtml(s.title)}">
         <span class="session-icon">💬</span>
         <span class="session-title">${escapeHtml(s.title || 'Untitled')}</span>
-        <button class="session-del" onclick="deleteSession(${s.id}, event)" title="Delete session">✕</button>
-      </div>`
-    ).join('');
+        <button class="session-del" onclick="deleteSession(${s.id},event)" title="Delete">✕</button>
+      </div>`).join('');
   } catch(e) { console.warn('Could not load sessions', e); }
 }
 
 async function loadSession(sessionId) {
   try {
-    const res  = await authFetch(`/api/sessions/${sessionId}`);
+    const res = await authFetch(`/api/sessions/${sessionId}`);
     const data = await res.json();
     if (!res.ok) return;
     currentSession = sessionId;
-    
-    // Clear and replay messages
     const win = document.getElementById('chat-window');
     win.innerHTML = '';
-    
-    // Track the last sources from assistant messages
     let lastSources = null;
     (data.messages || []).forEach(m => {
+<<<<<<< Updated upstream
       appendMessage(m.role === 'user' ? 'user' : 'bot', null, m.content);
       // Extract sources from assistant messages
       if (m.role === 'assistant' && m.sources) {
         lastSources = m.sources;
+=======
+      let rw = null;
+      if (m.role === 'user' && m.sources && m.sources.query_rewritten) {
+        rw = { query_rewritten: true, original_query: m.sources.original_query, rewritten_query: m.sources.rewritten_query, rewrite_strategy: m.sources.rewrite_strategy, score_improvement: m.sources.score_improvement };
+>>>>>>> Stashed changes
       }
+      appendMessage(m.role === 'user' ? 'user' : 'bot', null, m.content, false, rw);
+      if (m.role === 'assistant' && m.sources) lastSources = m.sources;
     });
-    
-    // Display the most recent sources
-    if (lastSources) {
-      renderSources(lastSources.chunks || lastSources);
-    } else {
-      renderSources(null);
-    }
-    
-    // Switch to sources tab
+    renderSources(lastSources ? (lastSources.chunks || lastSources) : null);
     document.querySelectorAll('.right-tab')[0].click();
   } catch(e) { console.warn('Could not load session', e); }
 }
@@ -426,217 +320,345 @@ async function loadSession(sessionId) {
 async function ensureSession() {
   if (currentSession || !currentToken) return;
   try {
-    const res  = await authFetch('/api/sessions/', {
-      method: 'POST', body: JSON.stringify({ title: 'New Chat' }),
-    });
+    const res = await authFetch('/api/sessions/', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
     const data = await res.json();
     if (res.ok) { currentSession = data.session.id; loadSessions(); }
   } catch(e) { console.warn('Could not create session', e); }
 }
 
 async function deleteSession(sessionId, e) {
-  e.stopPropagation(); // Prevent loadSession from firing
-  if (!confirm('Delete this chat session and all its messages?')) return;
+  e.stopPropagation();
+  if (!confirm('Delete this chat session?')) return;
   try {
     const res = await authFetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-    if (res.ok) {
-      showToast('🗑️', 'Session deleted.', 'success');
-      
-      // If deleted session is currently active, clear the chat
-      if (currentSession === sessionId) {
-        newChat(); // This clears currentSession and the chat window
-      }
-      
-      // Refresh session list
-      loadSessions();
-    } else {
-      showToast('❌', 'Delete failed.', 'error');
-    }
-  } catch {
-    showToast('❌', 'Backend unreachable.', 'error');
-  }
+    if (res.ok) { showToast('🗑️', 'Session deleted.', 'success'); if (currentSession === sessionId) newChat(); loadSessions(); }
+    else showToast('❌', 'Delete failed.', 'error');
+  } catch { showToast('❌', 'Backend unreachable.', 'error'); }
 }
 
 // ══════════════════════════════════════════════
-// DOCUMENTS
-// ══════════════════════════════════════════════ 
+// FOLDERS - CRUD
+// ══════════════════════════════════════════════
+async function loadFolders() {
+  if (!currentToken) { folders = []; return; }
+  try {
+    const res = await authFetch('/api/folders/');
+    const data = await res.json();
+    folders = data.folders || [];
+  } catch { folders = []; }
+}
+
+function openCreateFolderModal() {
+  if (!currentUser) { showToast('❌', 'Please log in first.', 'error'); return; }
+  folderModalMode = 'create'; folderModalId = null;
+  document.getElementById('folder-modal-title').textContent = 'New Folder';
+  document.getElementById('folder-modal-submit').textContent = 'Create';
+  document.getElementById('folder-name-input').value = '';
+  document.getElementById('folder-modal-error').textContent = '';
+  document.getElementById('folder-modal-overlay').classList.add('visible');
+  setTimeout(() => document.getElementById('folder-name-input').focus(), 100);
+}
+
+function openRenameFolderModal(folderId, currentName) {
+  folderModalMode = 'rename'; folderModalId = folderId;
+  document.getElementById('folder-modal-title').textContent = 'Rename Folder';
+  document.getElementById('folder-modal-submit').textContent = 'Rename';
+  document.getElementById('folder-name-input').value = currentName;
+  document.getElementById('folder-modal-error').textContent = '';
+  document.getElementById('folder-modal-overlay').classList.add('visible');
+  setTimeout(() => document.getElementById('folder-name-input').focus(), 100);
+}
+
+function closeFolderModal() { document.getElementById('folder-modal-overlay').classList.remove('visible'); }
+document.getElementById('folder-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('folder-modal-overlay')) closeFolderModal();
+});
+
+async function submitFolderModal() {
+  const name = document.getElementById('folder-name-input').value.trim();
+  const errEl = document.getElementById('folder-modal-error');
+  if (!name) { errEl.textContent = 'Folder name is required.'; return; }
+  try {
+    let res;
+    if (folderModalMode === 'create') {
+      res = await authFetch('/api/folders/', { method: 'POST', body: JSON.stringify({ name }) });
+    } else {
+      res = await authFetch(`/api/folders/${folderModalId}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+    }
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Failed.'; return; }
+    showToast('📁', folderModalMode === 'create' ? `Folder "${name}" created.` : `Folder renamed.`, 'success');
+    closeFolderModal();
+    loadDocuments();
+  } catch { errEl.textContent = 'Backend unreachable.'; }
+}
+
+async function deleteFolder(folderId, folderName) {
+  if (!confirm(`Delete folder "${folderName}"?\n\nDocuments inside will be moved to Unfiled.`)) return;
+  try {
+    const res = await authFetch(`/api/folders/${folderId}`, { method: 'DELETE' });
+    if (res.ok) {
+      showToast('🗑️', `Folder "${folderName}" deleted.`, 'success');
+      scopedFolderIds = scopedFolderIds.filter(id => id !== folderId);
+      updateFolderScopeUI(); loadDocuments();
+    } else showToast('❌', 'Delete failed.', 'error');
+  } catch { showToast('❌', 'Backend unreachable.', 'error'); }
+}
+
+// ── Move document to folder ──
+function showMoveMenu(docId, event) {
+  event.stopPropagation(); closeMoveMenu();
+  const rect = event.target.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.id = 'move-folder-menu'; menu.className = 'move-folder-menu';
+  menu.style.top = rect.bottom + 4 + 'px';
+  menu.style.left = Math.min(rect.left, window.innerWidth - 200) + 'px';
+  let items = `<button class="move-item" onclick="moveDocToFolder(${docId}, null)">📂 Unfiled</button>`;
+  if (folders.length > 0) items += '<div class="move-divider"></div>';
+  folders.forEach(f => {
+    items += `<button class="move-item" onclick="moveDocToFolder(${docId}, ${f.id})">📁 ${escapeHtml(f.name)}</button>`;
+  });
+  menu.innerHTML = items;
+  document.body.appendChild(menu);
+  setTimeout(() => document.addEventListener('click', closeMoveMenu, { once: true }), 0);
+}
+function closeMoveMenu() { const m = document.getElementById('move-folder-menu'); if (m) m.remove(); }
+
+async function moveDocToFolder(docId, folderId) {
+  closeMoveMenu();
+  try {
+    const res = await fetch(`${API}/api/documents/${docId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}) },
+      body: JSON.stringify({ folder_id: folderId })
+    });
+    if (res.ok) { showToast('✅', 'Document moved.', 'success'); loadDocuments(); }
+    else showToast('❌', 'Move failed.', 'error');
+  } catch { showToast('❌', 'Backend unreachable.', 'error'); }
+}
+
+// ══════════════════════════════════════════════
+// FOLDER SCOPE (for chat & quiz)
+// ══════════════════════════════════════════════
+function openFolderScopeModal() {
+  document.getElementById('add-menu').style.display = 'none';
+  document.getElementById('add-btn').classList.remove('active');
+  if (!currentUser) { showToast('❌', 'Please log in first.', 'error'); return; }
+  renderFolderChecklist('folder-scope-checklist', scopedFolderIds);
+  document.getElementById('folder-scope-modal-overlay').classList.add('visible');
+}
+function closeFolderScopeModal() { document.getElementById('folder-scope-modal-overlay').classList.remove('visible'); }
+document.getElementById('folder-scope-modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('folder-scope-modal-overlay')) closeFolderScopeModal();
+});
+
+function applyFolderScope() {
+  const checks = document.querySelectorAll('#folder-scope-checklist input[type="checkbox"]');
+  scopedFolderIds = [];
+  checks.forEach(cb => { if (cb.checked) scopedFolderIds.push(parseInt(cb.value)); });
+  updateFolderScopeUI(); closeFolderScopeModal();
+  if (scopedFolderIds.length > 0) {
+    const names = scopedFolderIds.map(id => { const f = folders.find(x => x.id === id); return f ? f.name : '?'; });
+    showToast('📁', `Chat scoped to: ${names.join(', ')}`, 'success');
+  } else showToast('📁', 'Folder scope cleared — using all documents.', 'success');
+}
+
+function clearFolderScope() { scopedFolderIds = []; updateFolderScopeUI(); showToast('📁', 'Folder scope cleared.', 'success'); }
+
+function updateFolderScopeUI() {
+  const pill = document.getElementById('folder-filter-pill');
+  const pillText = document.getElementById('folder-filter-pill-text');
+  const features = document.getElementById('active-features');
+  if (scopedFolderIds.length > 0) {
+    const names = scopedFolderIds.map(id => { const f = folders.find(x => x.id === id); return f ? f.name : '?'; });
+    pillText.textContent = names.length <= 2 ? names.join(', ') : `${names.length} folders`;
+    pill.style.display = 'inline-flex';
+  } else { pill.style.display = 'none'; }
+  const anyActive = webSearchEnabled || diagramEnabled || scopedFolderIds.length > 0;
+  features.style.display = anyActive ? 'flex' : 'none';
+}
+
+function renderFolderChecklist(containerId, selectedIds) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  if (folders.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px;">No folders yet. Create one from the sidebar.</div>';
+    return;
+  }
+  el.innerHTML = folders.map(f => `
+    <label class="folder-check-item">
+      <input type="checkbox" value="${f.id}" ${selectedIds.includes(f.id) ? 'checked' : ''} />
+      <span class="folder-check-name">📁 ${escapeHtml(f.name)}</span>
+      <span class="folder-check-count">${f.document_count} doc${f.document_count !== 1 ? 's' : ''}</span>
+    </label>`).join('');
+}
+
+// ══════════════════════════════════════════════
+// UPLOAD PROGRESS OVERLAY
+// ══════════════════════════════════════════════
+const UPLOAD_STAGES = [
+  { label: 'Saving file to server',         pct: 10,  icon: '📥' },
+  { label: 'Extracting text from document',  pct: 25,  icon: '📝' },
+  { label: 'Splitting into chunks',          pct: 40,  icon: '✂️' },
+  { label: 'Classifying subjects',           pct: 50,  icon: '🏷️' },
+  { label: 'Generating embeddings (slow)',   pct: 75,  icon: '🧠' },
+  { label: 'Storing in vector database',     pct: 90,  icon: '💾' },
+];
+
+let _uploadStageTimer = null;
+
+function showUploadProgress(filename) {
+  const overlay = document.getElementById('upload-progress-overlay');
+  document.getElementById('upload-progress-filename').textContent = filename;
+  document.getElementById('upload-progress-bar').style.width = '0%';
+  document.getElementById('upload-progress-stage').textContent = 'Starting…';
+  document.getElementById('upload-progress-title').textContent = 'Processing document…';
+
+  // Build step list
+  const stepsEl = document.getElementById('upload-progress-steps');
+  stepsEl.innerHTML = UPLOAD_STAGES.map((s, i) => `
+    <div class="upload-step" id="upload-step-${i}">
+      <span class="upload-step-icon">${s.icon}</span>
+      <span>${s.label}</span>
+    </div>`).join('');
+
+  overlay.style.display = 'flex';
+
+  // Animate through stages at realistic intervals
+  let stageIdx = 0;
+  function advanceStage() {
+    if (stageIdx >= UPLOAD_STAGES.length) return;
+    const stage = UPLOAD_STAGES[stageIdx];
+    document.getElementById('upload-progress-bar').style.width = stage.pct + '%';
+    document.getElementById('upload-progress-stage').textContent = stage.label + '…';
+
+    // Mark previous steps as done
+    for (let j = 0; j < stageIdx; j++) {
+      const el = document.getElementById(`upload-step-${j}`);
+      if (el) { el.classList.remove('active'); el.classList.add('done'); }
+    }
+    // Mark current step as active
+    const cur = document.getElementById(`upload-step-${stageIdx}`);
+    if (cur) { cur.classList.add('active'); cur.classList.remove('done'); }
+
+    stageIdx++;
+    // Timings: first few are fast, embedding step is slow
+    const delays = [800, 1500, 1200, 2000, 8000, 2000];
+    const delay = delays[stageIdx - 1] || 2000;
+    _uploadStageTimer = setTimeout(advanceStage, delay);
+  }
+  advanceStage();
+}
+
+function hideUploadProgress(success) {
+  clearTimeout(_uploadStageTimer);
+  const bar = document.getElementById('upload-progress-bar');
+  const stage = document.getElementById('upload-progress-stage');
+  const title = document.getElementById('upload-progress-title');
+  if (success) {
+    bar.style.width = '100%';
+    stage.textContent = 'Complete!';
+    title.textContent = 'Document ingested successfully!';
+    // Mark all steps done
+    UPLOAD_STAGES.forEach((_, i) => {
+      const el = document.getElementById(`upload-step-${i}`);
+      if (el) { el.classList.remove('active'); el.classList.add('done'); }
+    });
+  } else {
+    stage.textContent = 'Failed';
+    title.textContent = 'Upload failed';
+  }
+  // Auto-close after a short delay
+  setTimeout(() => {
+    document.getElementById('upload-progress-overlay').style.display = 'none';
+  }, success ? 1200 : 2500);
+}
+
+// ══════════════════════════════════════════════
+// DOCUMENTS & FOLDER TREE
+// ══════════════════════════════════════════════
 function triggerSidebarUpload() {
   document.getElementById('sidebar-file-input').click();
 }
-let pendingLinks = [];
 
-function addLink() {
-  const inp = document.getElementById("link-input");
-  const url = (inp.value || "").trim();
-  if (!url) return;
-  
-  // Basic URL validation
-  try {
-    const parsed = new URL(url);
-    
-    // Check if HTTPS
-    if (parsed.protocol !== 'https:') {
-      showToast("⚠️", "Warning: Only HTTPS links are accepted", "warning");
-      return;
-    }
-    
-    // Warn about potentially untrusted domains (soft warning)
-    const trustedDomains = [
-      'wikipedia.org', 'github.com', 'stackoverflow.com', 'arxiv.org',
-      'docs.python.org', 'developer.mozilla.org', 'geeksforgeeks.org',
-      'medium.com', 'openai.com', 'cloud.google.com', 'aws.amazon.com',
-      'pypi.org', 'zhihu.com', 'csdn.net', 'baidu.com', 'jianshu.com',
-      'oschina.net', 'raw.githubusercontent.com'
-    ];
-    
-    const hostname = parsed.hostname.toLowerCase();
-    const isTrusted = trustedDomains.some(domain => 
-      hostname === domain || hostname.endsWith('.' + domain)
-    );
-    
-    if (!isTrusted) {
-      // Add with warning but don't block
-      pendingLinks.push(url);
-      inp.value = "";
-      renderLinkList();
-      showToast("⚠️", `Added link (domain may not be trusted: ${hostname})`, "warning");
-      return;
-    }
-    
-  } catch (e) {
-    showToast("❌", "Invalid URL format", "error");
-    return;
-  }
-  
-  pendingLinks.push(url);
-  inp.value = "";
-  renderLinkList();
-}
-
-function removeLink(i) {
-  pendingLinks.splice(i, 1);
-  renderLinkList();
-}
-
-function renderLinkList() {
-  const el = document.getElementById("link-list");
-  if (!el) return;
-  el.innerHTML = pendingLinks.map((u, i) => `
-    <div class="link-item">
-      <span>${escapeHtml(u)}</span>
-      <button onclick="removeLink(${i})">✕</button>
-    </div>
-  `).join("");
-}
-async function ingestLinks() {
-   if (!currentUser) {
-    showToast("❌", "Please log in first.", "error");
-    return;
-  }
-  if (!pendingLinks.length) {
-    showToast("🔗", "No links added.", "warning");
-    return;
-  }
-  showToast("⏳", "Ingesting links…", "");
-
-  const res = await fetch(`${API}/api/links/ingest`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ urls: pendingLinks, user_id: currentUser.id })
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    showToast("❌", data.error || "Link ingest failed", "error");
-    return;
-  }
-  
-  // Handle ingestion results
-  const ingestedCount = data.ingested?.length || 0;
-  const rejectedCount = data.rejected?.length || 0;
-  
-  if (ingestedCount > 0 && rejectedCount === 0) {
-    // All links ingested successfully
-    showToast("✅", `Ingested ${ingestedCount} link(s)`, "success");
-  } else if (ingestedCount > 0 && rejectedCount > 0) {
-    // Some succeeded, some failed
-    showToast("⚠️", `Ingested ${ingestedCount} link(s), ${rejectedCount} rejected`, "warning");
-    console.warn("Rejected links:", data.rejected);
-  } else if (rejectedCount > 0) {
-    // All links rejected
-    const reasons = data.rejected.map(r => {
-      const url = new URL(r.url).hostname;
-      if (r.reason === "untrusted_or_invalid") return `${url}: Not in trusted domain list`;
-      if (r.reason === "fetch_failed") return `${url}: Could not fetch page`;
-      if (r.reason === "no_sections_extracted") return `${url}: No content found`;
-      return `${url}: ${r.reason}`;
-    }).join("\n");
-    showToast("❌", `All links rejected:\n${reasons}`, "error");
-    return; // Don't clear pending links
-  }
-  
-  pendingLinks = [];
-  renderLinkList();
-  loadDocuments(); // refresh sidebar
-}
 async function onSidebarFileSelected(event) {
   const file = event.target.files[0];
   if (!file) return;
-
-  // Optional: reset the input so selecting the same file again will trigger change
   event.target.value = '';
-
-  // Reuse the same document upload logic as chat input
   await uploadDocumentFromSidebar(file);
 }
 
-async function uploadDocumentFromSidebar(file) {
-  showToast('⏳', `Uploading ${file.name}…`, '');
+async function uploadDocumentFromSidebar(file, folderId) {
+  if (!currentUser) { showToast('❌', 'Please log in before uploading.', 'error'); return; }
+
+  // Show progress overlay instead of just a toast
+  showUploadProgress(file.name);
 
   const formData = new FormData();
   formData.append('file', file);
-  formData.append('subject', 'AAI3008');
-
-  // Ensure uploads are owned by the logged-in user
-  if (!currentUser) {
-    showToast('❌', 'Please log in before uploading documents.', 'error');
-    return;
-  }
+  formData.append('subject', 'General');
   formData.append('user_id', currentUser.id);
+  if (folderId != null) formData.append('folder_id', folderId);
 
   try {
-    const res  = await fetch(`${API}/api/documents/upload`, {
-      method: 'POST',
-      body: formData,
-    });
+    const res = await fetch(`${API}/api/documents/upload`, { method: 'POST', body: formData });
     const data = await res.json();
-
     if (!res.ok) {
+      hideUploadProgress(false);
       showToast('❌', data.error || 'Upload failed.', 'error');
       return;
     }
-
+    hideUploadProgress(true);
     showToast('✅', `${file.name} ingested!`, 'success');
-    loadDocuments();  // refresh left sidebar document list
-  } catch (e) {
+    loadDocuments();
+  } catch {
+    hideUploadProgress(false);
     showToast('❌', 'Upload failed — backend unreachable.', 'error');
   }
 }
 
-
+// ── FIX: loadDocuments now passes user_id to only show the logged-in user's docs ──
 async function loadDocuments() {
   try {
+<<<<<<< Updated upstream
     const res  = await fetch(`${API}/api/documents/`);
     const data = await res.json();
     const docs = data.documents || data || [];
+=======
+    if (currentToken) await loadFolders();
 
-    // Build maps for quick lookup by Sources click
+    // Pass user_id so backend only returns this user's documents
+    const url = currentUser
+      ? `${API}/api/documents/?user_id=${currentUser.id}`
+      : `${API}/api/documents/`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const docs = data.documents || data;
+    const tree = document.getElementById('docs-tree');
+>>>>>>> Stashed changes
+
     window._docsById = {};
     window._docIdByFilename = {};
+    (docs || []).forEach(d => { window._docsById[d.id] = d; if (d.filename) window._docIdByFilename[d.filename] = d.id; });
+
+    if (!docs?.length && !folders.length) {
+      tree.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">${currentUser ? 'No documents yet. Upload or paste a link.' : 'Log in to manage documents.'}</div>`;
+      return;
+    }
+
+    // Group docs by folder_id
+    const byFolder = {};
+    const unfiled = [];
     (docs || []).forEach(d => {
-      window._docsById[d.id] = d;
-      if (d.filename) window._docIdByFilename[d.filename] = d.id;
+      if (d.folder_id) {
+        if (!byFolder[d.folder_id]) byFolder[d.folder_id] = [];
+        byFolder[d.folder_id].push(d);
+      } else {
+        unfiled.push(d);
+      }
     });
 
+<<<<<<< Updated upstream
     renderDocFolderList(docs);
   } catch(e) {
     console.warn('Could not load documents', e);
@@ -738,308 +760,186 @@ async function onDropToFolder(event, folderId) {
 }
 
 // Preview as segmented chunk cards + highlight the matched chunk
-async function previewDoc(docId, filename, opts = {}) {
-  try {
-    const limit = 200;
-    const res = await fetch(`${API}/api/documents/${docId}?limit=${limit}`);
-    const data = await res.json();
+=======
+    let html = '';
 
-    if (!res.ok) {
-      openDocModal(filename, `<div style="color:var(--text-muted)">${escapeHtml(data.error || "Preview failed")}</div>`);
-      return;
+    // Render each folder
+    folders.forEach(f => {
+      const fDocs = byFolder[f.id] || [];
+      const isCollapsed = collapsedFolders.has(f.id);
+      html += `<div class="folder-group">
+        <div class="folder-header" onclick="toggleFolder(${f.id})">
+          <span class="folder-arrow ${isCollapsed ? '' : 'open'}">▶</span>
+          <span class="folder-icon">📁</span>
+          <span class="folder-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+          <span class="folder-count">${fDocs.length}</span>
+          <span class="folder-actions" onclick="event.stopPropagation()">
+            <button onclick="event.stopPropagation(); uploadToFolder(${f.id})" title="Upload to this folder">📎</button>
+            <button onclick="event.stopPropagation(); openRenameFolderModal(${f.id}, '${escapeHtml(f.name)}')" title="Rename">✏️</button>
+            <button class="danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${escapeHtml(f.name)}')" title="Delete folder">✕</button>
+          </span>
+        </div>
+        <div class="folder-docs ${isCollapsed ? 'collapsed' : ''}" id="folder-docs-${f.id}" style="max-height:${isCollapsed ? '0' : (fDocs.length * 40 + 40) + 'px'}">
+          ${fDocs.length === 0 ? '<div class="folder-empty-text">Empty folder — use 📎 to upload here</div>' : ''}
+          ${fDocs.map(d => renderDocItem(d)).join('')}
+        </div>
+      </div>`;
+    });
+
+    if (unfiled.length > 0) {
+      html += `<div class="unfiled-header">📂 Unfiled</div>`;
+      html += unfiled.map(d => renderDocItem(d)).join('');
     }
 
+    tree.innerHTML = html || '<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>';
+  } catch(e) { console.warn('Could not load documents', e); }
+}
+
+function renderDocItem(doc) {
+  const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : []);
+  const primary = subjects[0] || '';
+  const color = SUBJECT_COLORS[primary] || SUBJECT_COLORS['General'];
+  const badge = primary ? `<span class="subject-badge-sm" style="background:${color}20;color:${color};">${primary}</span>` : '';
+  return `
+    <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
+      <span class="doc-icon">📄</span>
+      <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+      ${badge}
+      <span class="doc-actions" onclick="event.stopPropagation()">
+        <button onclick="event.stopPropagation(); showMoveMenu(${doc.id}, event)" title="Move to folder">📁</button>
+        <button class="danger" onclick="event.stopPropagation(); deleteDoc(${doc.id})" title="Delete">✕</button>
+      </span>
+    </div>`;
+}
+
+function toggleFolder(folderId) {
+  if (collapsedFolders.has(folderId)) collapsedFolders.delete(folderId);
+  else collapsedFolders.add(folderId);
+  loadDocuments();
+}
+
+function uploadToFolder(folderId) {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.pdf,.docx,.pptx,.txt';
+  inp.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !currentUser) return;
+    await uploadDocumentFromSidebar(file, folderId);
+  };
+  inp.click();
+}
+
+>>>>>>> Stashed changes
+async function previewDoc(docId, filename, opts = {}) {
+  try {
+    const res = await fetch(`${API}/api/documents/${docId}?limit=200`);
+    const data = await res.json();
+    if (!res.ok) { openDocModal(filename, `<div style="color:var(--text-muted)">${escapeHtml(data.error || "Preview failed")}</div>`); return; }
     const chunks = data.chunks || [];
-    const needle = opts.needle || "";
-    const chunkOrder = (opts.chunkOrder !== null && opts.chunkOrder !== undefined) ? Number(opts.chunkOrder) : null;
-
-    const tip = `
-      <div style="color:var(--text-muted); margin-bottom:10px;">
-        ${chunkOrder !== null
-          ? `Highlighting retrieved chunk <b>#${chunkOrder}</b>…`
-          : (needle ? "Highlighting last selected source…" : "Tip: click a source to auto-open and highlight its chunk.")
-        }
-      </div>
-    `;
-
+    const needle = opts.needle || '';
+    const chunkOrder = opts.chunkOrder !== null && opts.chunkOrder !== undefined ? Number(opts.chunkOrder) : null;
+    const tip = `<div style="color:var(--text-muted);margin-bottom:10px;">${chunkOrder !== null ? `Highlighting chunk <b>#${chunkOrder}</b>…` : 'Click a source to auto-highlight its chunk.'}</div>`;
     const cards = chunks.map(c => {
-      const isHit =
-        (chunkOrder !== null && c.chunk_order === chunkOrder) ||
-        (chunkOrder === null && needle && (c.content || "").includes(needle));
-
+      const isHit = (chunkOrder !== null && c.chunk_order === chunkOrder) || (chunkOrder === null && needle && (c.content||'').includes(needle));
       const page = c.metadata?.source?.page;
-      const pageDisplay = page != null ? `Page ${page} • ` : '';
       const charCount = c.len || (c.content||'').length;
-      
-      // Extract subject/topic metadata
-      const subjects = c.metadata?.subjects || [];
-      const dominantSubject = c.metadata?.dominant_subject || 'General';
-      const dominantTopic = c.metadata?.dominant_topic || '';
-      
-      // Build subject badges
-      const subjectBadges = subjects.slice(0, 2).map(s => {
-        const color = SUBJECT_COLORS[s.name] || SUBJECT_COLORS['General'];
-        const confidence = Math.round((s.confidence || 0.5) * 100);
-        return `<span style="background:${color}20; color:${color}; border:1px solid ${color}40; padding:2px 5px; border-radius:3px; font-size:9px; font-weight:600; margin-right:4px; display:inline-block;">${s.name} ${confidence}%</span>`;
-      }).join('');
-      
-      // Topic display
-      const topicDisplay = dominantTopic ? `<div style="font-size:10px; color:var(--text-muted); margin-top:2px;">🏷️ ${dominantTopic}</div>` : '';
-
-      return `
-        <div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk="${c.chunk_order}"
-             style="border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:10px; background:var(--bg-input);">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-            <div style="flex:1;">
-              <div style="font-weight:600; color:var(--accent);">Chunk ${c.chunk_order}</div>
-              ${subjectBadges ? `<div style="margin-top:4px;">${subjectBadges}</div>` : ''}
-            </div>
-            <div style="font-size:11px; color:var(--text-muted); text-align:right;">
-              ${pageDisplay}${charCount} chars
-              ${topicDisplay}
-            </div>
-          </div>
-          <div style="white-space:pre-wrap;">${escapeHtml(c.content || "")}</div>
+      return `<div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk="${c.chunk_order}">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <div style="font-weight:600;color:var(--accent);">Chunk ${c.chunk_order}</div>
+          <div style="font-size:11px;color:var(--text-muted);">${page != null ? 'p.' + page + ' · ' : ''}${charCount} chars</div>
         </div>
-      `;
+        <div style="white-space:pre-wrap;font-size:12px;">${escapeHtml(c.content||'')}</div>
+      </div>`;
     }).join('');
-
     openDocModal(filename, tip + cards);
-
-    // Auto-scroll to highlighted chunk
     setTimeout(() => {
       const target = document.querySelector('#doc-modal-body .chunk-card.highlight');
       if (target) target.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }, 60);
-
-  } catch {
-    openDocModal(filename, `<div style="color:var(--text-muted)">Backend unreachable.</div>`);
-  }
+  } catch { openDocModal(filename, '<div style="color:var(--text-muted)">Backend unreachable.</div>'); }
 }
 
-async function deleteDoc(docId, e) {
-  e.stopPropagation();
+async function deleteDoc(docId) {
   if (!confirm('Delete this document and all its chunks?')) return;
   try {
     const res = await fetch(`${API}/api/documents/${docId}`, { method: 'DELETE' });
-    if (res.ok) { 
-      showToast('🗑️', 'Document deleted.', 'success'); 
-      loadDocuments();
-      // Remove only sources from the deleted document, keep others
-      const currentSources = window._lastSources || [];
-      const filteredSources = currentSources.filter(s => s.document_id !== docId);
-      renderSources(filteredSources.length > 0 ? filteredSources : null);
-    }
-    else { showToast('❌', 'Delete failed.', 'error'); }
+    if (res.ok) { showToast('🗑️', 'Document deleted.', 'success'); loadDocuments(); }
+    else showToast('❌', 'Delete failed.', 'error');
   } catch { showToast('❌', 'Backend unreachable.', 'error'); }
 }
 
-// Edit document subject
-function editDocumentSubject(docId, currentSubjects) {
-  const subjectOptions = VALID_SUBJECTS.map(s => 
-    `<option value="${s}" ${currentSubjects.includes(s) ? 'selected' : ''}>${s}</option>`
-  ).join('');
-  
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:10000;';
-  modal.innerHTML = `
-    <div style="background:#2d2d2d; padding:24px; border-radius:12px; max-width:400px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,0.5); border:1px solid #404040;">
-      <h3 style="margin:0 0 16px 0; color:#ececec;">Edit Document Subject</h3>
-      <p style="margin:0 0 12px 0; font-size:13px; color:#8e8ea0;">Select one or more subjects for this document:</p>
-      <select id="subject-select" multiple size="8" style="width:100%; padding:8px; background:#1a1a1a; color:#ececec; border:1px solid #404040; border-radius:6px; font-size:13px;">
-        ${subjectOptions}
-      </select>
-      <p style="margin:8px 0 16px 0; font-size:11px; color:#8e8ea0;">Hold Ctrl/Cmd to select multiple</p>
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:8px 16px; background:#3a3a3a; color:#ececec; border:none; border-radius:6px; cursor:pointer; transition:background 0.2s;" onmouseover="this.style.background='#4a4a4a'" onmouseout="this.style.background='#3a3a3a'">Cancel</button>
-        <button id="save-subject-btn" style="padding:8px 16px; background:#10a37f; color:white; border:none; border-radius:6px; cursor:pointer; font-weight:600; transition:background 0.2s;" onmouseover="this.style.background='#0d8a6c'" onmouseout="this.style.background='#10a37f'">Save</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  
-  document.getElementById('save-subject-btn').onclick = async () => {
-    const select = document.getElementById('subject-select');
-    const selected = Array.from(select.selectedOptions).map(opt => opt.value);
-    
-    if (selected.length === 0) {
-      showToast('❌', 'Please select at least one subject', 'error');
-      return;
-    }
-    
-    try {
-      const res = await fetch(`${API}/api/documents/${docId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentToken}`
-        },
-        body: JSON.stringify({ subject: selected })
-      });
-      
-      if (res.ok) {
-        showToast('✅', 'Subject updated', 'success');
-        loadDocuments();
-        modal.remove();
-      } else {
-        const data = await res.json();
-        showToast('❌', data.error || 'Update failed', 'error');
-      }
-    } catch (e) {
-      showToast('❌', 'Connection error', 'error');
-    }
-  };
-  
-  modal.onclick = (e) => {
-    if (e.target === modal) modal.remove();
-  };
+// ── Links ──
+let pendingLinks = [];
+function addLink() {
+  const inp = document.getElementById('link-input');
+  const url = (inp.value || '').trim();
+  if (!url) return;
+  try { const p = new URL(url); if (p.protocol !== 'https:') { showToast('⚠️', 'Only HTTPS links.', 'warning'); return; } }
+  catch { showToast('❌', 'Invalid URL.', 'error'); return; }
+  pendingLinks.push(url); inp.value = ''; renderLinkList();
+}
+function removeLink(i) { pendingLinks.splice(i, 1); renderLinkList(); }
+function renderLinkList() {
+  const el = document.getElementById('link-list');
+  if (!el) return;
+  el.innerHTML = pendingLinks.map((u, i) => `<div class="link-item"><span>${escapeHtml(u)}</span><button onclick="removeLink(${i})">✕</button></div>`).join('');
+}
+async function ingestLinks() {
+  if (!currentUser) { showToast('❌', 'Please log in first.', 'error'); return; }
+  if (!pendingLinks.length) { showToast('🔗', 'No links added.', 'warning'); return; }
+  showToast('⏳', 'Ingesting links…', '');
+  const res = await fetch(`${API}/api/links/ingest`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ urls: pendingLinks, user_id: currentUser.id })
+  });
+  const data = await res.json();
+  if (!res.ok) { showToast('❌', data.error || 'Link ingest failed.', 'error'); return; }
+  const ok = data.ingested?.length || 0;
+  const bad = data.rejected?.length || 0;
+  if (ok > 0) showToast('✅', `Ingested ${ok} link(s)${bad > 0 ? `, ${bad} rejected` : ''}`, ok > 0 && bad > 0 ? 'warning' : 'success');
+  else { showToast('❌', 'All links rejected.', 'error'); return; }
+  pendingLinks = []; renderLinkList(); loadDocuments();
 }
 
 // ══════════════════════════════════════════════
-// TOOL RENDERING (Mermaid / Desmos)
+// TOOL RENDERING
 // ══════════════════════════════════════════════
-
 function renderToolPanel(tool) {
   if (!tool) return '';
   const id = 'tool-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-
   if (tool.type === 'mermaid') {
-    return `
-      <div class="tool-panel" data-tool-id="${id}">
-        <div class="tool-panel-header">
-          <span>🔀 Diagram</span>
-          <div class="download-group">
-            <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'svg')">⬇ SVG</button>
-            <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'png')">⬇ PNG</button>
-            <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'pdf')">⬇ PDF</button>
-          </div>
+    return `<div class="tool-panel" data-tool-id="${id}">
+      <div class="tool-panel-header"><span>🔀 Diagram</span>
+        <div class="download-group">
+          <button class="tool-download-btn" onclick="downloadMermaid('${id}','svg')">⬇ SVG</button>
+          <button class="tool-download-btn" onclick="downloadMermaid('${id}','png')">⬇ PNG</button>
         </div>
-        <div class="mermaid-container" id="${id}">
-          <div class="mermaid">${escapeHtml(tool.code)}</div>
-        </div>
-      </div>`;
-  }
-
-  if (tool.type === 'desmos') {
-    return `
-      <div class="tool-panel" data-tool-id="${id}">
-        <div class="tool-panel-header">
-          <span>📈 Graph</span>
-          <div class="download-group">
-            <button class="tool-download-btn" onclick="downloadDesmos('${id}')">⬇ PNG</button>
-          </div>
-        </div>
-        <div class="desmos-container" id="${id}"></div>
       </div>
-      <script>
-        (function() {
-          const el = document.getElementById('${id}');
-          const calc = Desmos.GraphingCalculator(el, { expressions: true, keypad: false });
-          window['desmos_${id}'] = calc;
-          ${JSON.stringify(tool.expressions)}.forEach(function(latex, i) {
-            calc.setExpression({ id: 'e' + i, latex: latex });
-          });
-        })();
-      <\/script>`;
+      <div class="mermaid-container" id="${id}"><div class="mermaid">${escapeHtml(tool.code)}</div></div>
+    </div>`;
   }
   return '';
 }
-
 function initMermaidInElement(el) {
-  // After HTML is in DOM, find any un-rendered .mermaid nodes and render them
   const nodes = el.querySelectorAll('.mermaid:not([data-processed])');
   if (nodes.length > 0) mermaid.run({ nodes: Array.from(nodes) });
 }
-
-async function downloadMermaid(id, format = 'svg') {
+async function downloadMermaid(id, format) {
   const container = document.getElementById(id);
-  if (!container) return alert('Diagram not ready yet.');
+  if (!container) return;
   const svg = container.querySelector('svg');
-  if (!svg) return alert('Diagram not ready yet — please wait a moment.');
-
+  if (!svg) return alert('Diagram not ready.');
   if (format === 'svg') {
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const blob = new Blob([svgData], { type: 'image/svg+xml' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `diagram.svg`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    return;
-  }
-
-  if (format === 'png' || format === 'pdf') {
+    const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'diagram.svg'; a.click();
+  } else {
     const bbox = svg.getBoundingClientRect();
-    const scale = 2;
-    const canvas = document.createElement('canvas');
-    canvas.width = bbox.width * scale;
-    canvas.height = bbox.height * scale;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(scale, scale);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, bbox.width, bbox.height);
-
-    // Clone SVG with explicit namespace and dimensions
-    const clone = svg.cloneNode(true);
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-    clone.setAttribute('width', bbox.width);
-    clone.setAttribute('height', bbox.height);
-
-    // Inline all styles from stylesheets into the SVG
-    const styles = Array.from(document.styleSheets)
-      .flatMap(sheet => { try { return Array.from(sheet.cssRules); } catch { return []; } })
-      .map(rule => rule.cssText)
-      .join('\n');
-    const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-    styleEl.textContent = styles;
-    clone.insertBefore(styleEl, clone.firstChild);
-
-    const svgStr = new XMLSerializer().serializeToString(clone);
-    const svgBase64 = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgStr)));
-
+    const canvas = document.createElement('canvas'); canvas.width = bbox.width * 2; canvas.height = bbox.height * 2;
+    const ctx = canvas.getContext('2d'); ctx.scale(2, 2); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, bbox.width, bbox.height);
     const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, bbox.width, bbox.height);
-
-      if (format === 'png') {
-        canvas.toBlob(blob => {
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = 'diagram.png';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(a.href);
-        }, 'image/png');
-
-      } else {
-        const imgData = canvas.toDataURL('image/png');
-        const win = window.open('', '_blank');
-        if (!win) { alert('Allow popups for PDF export.'); return; }
-        win.document.write(`<!DOCTYPE html><html><head><title>Diagram</title>
-          <style>*{margin:0;padding:0} body{display:flex;justify-content:center;align-items:center;min-height:100vh;background:#fff}
-          img{max-width:100%} @media print{body{margin:0}}</style></head>
-          <body><img src="${imgData}">
-          <script>window.onload=()=>setTimeout(()=>window.print(),500)<\/script>
-          </body></html>`);
-        win.document.close();
-      }
-    };
-    img.onerror = () => alert('Export failed. Try SVG instead.');
-    img.src = svgBase64;
+    img.onload = () => { ctx.drawImage(img, 0, 0, bbox.width, bbox.height); canvas.toBlob(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'diagram.png'; a.click(); }, 'image/png'); };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(new XMLSerializer().serializeToString(svg))));
   }
-}
-
-function downloadDesmos(id) {
-  const calc = window['desmos_' + id];
-  if (!calc) return alert('Graph not ready yet.');
-  calc.asyncScreenshot({ width: 800, height: 500, targetPixelRatio: 2 }, (dataUrl) => {
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = 'graph.png';
-    a.click();
-  });
 }
 
 // ══════════════════════════════════════════════
@@ -1047,45 +947,68 @@ function downloadDesmos(id) {
 // ══════════════════════════════════════════════
 async function sendQuery() {
   const textarea = document.getElementById('query-input');
-  const query    = textarea.value.trim();
+  const query = textarea.value.trim();
   if (!query) return;
-
   document.getElementById('welcome')?.remove();
-
   await ensureSession();
+<<<<<<< Updated upstream
 
   appendMessage('user', null, query);
+=======
+  const userMsgId = appendMessage('user', null, query);
+>>>>>>> Stashed changes
   textarea.value = ''; autoResize(textarea);
-  //loading messages
   const loadingId = appendMessage('bot', null, 'Thinking…', true);
   startStageProgress(loadingId);
-  // Clear sources while loading
   renderSources(null);
   document.getElementById('sources-empty').style.display = 'block';
 
   try {
-
     const payload = { question: query, web_search: webSearchEnabled, diagram: diagramEnabled };
     if (currentSession) payload.session_id = currentSession;
+<<<<<<< Updated upstream
     // Include chat scope folder IDs if set
     if (chatScopeFolderIds.length > 0) {
       payload.folder_ids = chatScopeFolderIds;
     }
     const res  = await fetch(`${API}/api/query`, {
+=======
+    if (scopedFolderIds.length > 0) payload.folder_ids = scopedFolderIds;
+
+    const res = await fetch(`${API}/api/query`, {
+>>>>>>> Stashed changes
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}) },
       body: JSON.stringify(payload),
     });
     const data = await res.json();
+<<<<<<< Updated upstream
+=======
+
+    if (data.metadata && data.metadata.query_rewritten) {
+      const userMsgEl = document.getElementById(userMsgId);
+      if (userMsgEl) {
+        const rewriteHtml = `
+          <div class="query-rewrite-toggle" onclick="toggleRewriteDetails('${userMsgId}')">
+            <span class="rewrite-icon">✨</span><span class="rewrite-label">Query was rewritten</span><span class="rewrite-arrow">▼</span>
+          </div>
+          <div class="query-rewrite-details" id="${userMsgId}-rewrite" style="display:none;">
+            <div class="rewrite-detail-item"><div class="rewrite-detail-label">Original:</div><div class="rewrite-detail-value">${escapeHtml(data.metadata.original_query)}</div></div>
+            <div class="rewrite-detail-item"><div class="rewrite-detail-label">Rewritten:</div><div class="rewrite-detail-value">${escapeHtml(data.metadata.rewritten_query)}</div></div>
+            <div class="rewrite-detail-item"><div class="rewrite-detail-label">Strategy:</div><div class="rewrite-detail-value"><span class="rewrite-strategy-badge">${escapeHtml(data.metadata.rewrite_strategy)}</span></div></div>
+            ${data.metadata.score_improvement != null ? `<div class="rewrite-detail-item"><div class="rewrite-detail-label">Improvement:</div><div class="rewrite-detail-value rewrite-score-positive">+${data.metadata.score_improvement.toFixed(2)}</div></div>` : ''}
+          </div>`;
+        const body = userMsgEl.querySelector('.message-body');
+        if (body) body.insertAdjacentHTML('beforeend', rewriteHtml);
+      }
+    }
+
+>>>>>>> Stashed changes
     const answer = data.answer || data.response || data.message || JSON.stringify(data);
     const toolHtml = renderToolPanel(data.tool || null);
     updateMessage(loadingId, answer, toolHtml);
     if (data.sources) renderSources(data.sources);
-
-    // Reload sessions to update titles (messages already saved by query endpoint)
-    if (currentSession && currentToken) {
-      loadSessions();
-    }
+    if (currentSession && currentToken) loadSessions();
   } catch(e) {
     updateMessage(loadingId, '❌ Could not reach the backend. Is Flask running?');
   }
@@ -1094,12 +1017,33 @@ async function sendQuery() {
 // ══════════════════════════════════════════════
 // MESSAGE HELPERS
 // ══════════════════════════════════════════════
+<<<<<<< Updated upstream
 function appendMessage(role, docName, text, isLoading = false) {
   const id  = `msg-${++msgCounter}`;
+=======
+function appendMessage(role, docName, text, isLoading = false, rewriteMetadata = null) {
+  const id = `msg-${++msgCounter}`;
+>>>>>>> Stashed changes
   const win = document.getElementById('chat-window');
   const isUser = role === 'user';
   const div = document.createElement('div');
   div.className = 'message'; div.id = id;
+<<<<<<< Updated upstream
+=======
+  let rewriteHtml = '';
+  if (isUser && rewriteMetadata && rewriteMetadata.query_rewritten) {
+    rewriteHtml = `
+      <div class="query-rewrite-toggle" onclick="toggleRewriteDetails('${id}')">
+        <span class="rewrite-icon">✨</span><span class="rewrite-label">Query was rewritten</span><span class="rewrite-arrow">▼</span>
+      </div>
+      <div class="query-rewrite-details" id="${id}-rewrite" style="display:none;">
+        <div class="rewrite-detail-item"><div class="rewrite-detail-label">Original:</div><div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.original_query)}</div></div>
+        <div class="rewrite-detail-item"><div class="rewrite-detail-label">Rewritten:</div><div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.rewritten_query || text)}</div></div>
+        <div class="rewrite-detail-item"><div class="rewrite-detail-label">Strategy:</div><div class="rewrite-detail-value"><span class="rewrite-strategy-badge">${escapeHtml(rewriteMetadata.rewrite_strategy || 'auto')}</span></div></div>
+        ${rewriteMetadata.score_improvement != null ? `<div class="rewrite-detail-item"><div class="rewrite-detail-label">Improvement:</div><div class="rewrite-detail-value rewrite-score-positive">+${rewriteMetadata.score_improvement.toFixed(2)}</div></div>` : ''}
+      </div>`;
+  }
+>>>>>>> Stashed changes
   div.innerHTML = `
     <div class="avatar ${isUser ? 'user' : 'bot'}">${isUser ? '👤' : '🤖'}</div>
     <div class="message-body">
@@ -1113,17 +1057,21 @@ function appendMessage(role, docName, text, isLoading = false) {
 }
 
 function updateMessage(id, text, toolHtml = '') {
-  const msgEl = document.getElementById(id);
-  const textEl = msgEl ? msgEl.querySelector('.message-text') : null;
-  if (textEl) {
-    textEl.innerHTML = renderMarkdown(text) + toolHtml;
-    textEl.classList.remove('loading');
-    // Trigger Mermaid rendering on any diagram nodes just added to DOM
-    initMermaidInElement(textEl);
-  }
-  return msgEl;  // return the message div for KaTeX re-render etc.
+  const el = document.getElementById(id);
+  const textEl = el ? el.querySelector('.message-text') : null;
+  if (textEl) { textEl.innerHTML = renderMarkdown(text) + toolHtml; textEl.classList.remove('loading'); initMermaidInElement(textEl); }
+  return el;
 }
 
+<<<<<<< Updated upstream
+=======
+function toggleRewriteDetails(messageId) {
+  const d = document.getElementById(`${messageId}-rewrite`);
+  const t = document.querySelector(`#${messageId} .rewrite-arrow`);
+  if (d && t) { const v = d.style.display !== 'none'; d.style.display = v ? 'none' : 'block'; t.textContent = v ? '▼' : '▲'; }
+}
+
+>>>>>>> Stashed changes
 // ══════════════════════════════════════════════
 // NEW CHAT
 // ══════════════════════════════════════════════
@@ -1133,7 +1081,7 @@ function newChat() {
     <div id="welcome">
       <div class="welcome-icon">💬</div>
       <h2>Ask your documents anything</h2>
-      <p>Upload documents using the sidebar, then ask questions about them.</p>
+      <p>Upload files and organize them into folders.<br>Select folders to scope your conversation, then ask questions.</p>
     </div>`;
   document.getElementById('query-input').value = '';
   renderSources(null);
@@ -1143,220 +1091,117 @@ function newChat() {
 // UTILITY
 // ══════════════════════════════════════════════
 function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function renderMarkdown(text) {
-  // Configure marked options
-  marked.setOptions({
-    breaks: true,
-    gfm: true,
-    headerIds: false,
-    mangle: false
-  });
-  
-  // Parse markdown to HTML
-  const rawHtml = marked.parse(text);
-  
-  // Sanitize to prevent XSS, but allow math elements
-  const sanitized = DOMPurify.sanitize(rawHtml, {
-    ADD_TAGS: ['math', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'msqrt', 'mroot', 'annotation'],
+  marked.setOptions({ breaks: true, gfm: true, headerIds: false, mangle: false });
+  const raw = marked.parse(text);
+  const sanitized = DOMPurify.sanitize(raw, {
+    ADD_TAGS: ['math','semantics','mrow','mi','mo','mn','msup','msub','mfrac','msqrt','mroot','annotation'],
     ADD_ATTR: ['xmlns']
   });
-  
-  // Create container for rendering
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = sanitized;
-  
-  // Render LaTeX with KaTeX (auto-render handles finding and rendering LaTeX)
+  const div = document.createElement('div');
+  div.innerHTML = sanitized;
   if (typeof renderMathInElement !== 'undefined') {
     try {
-      renderMathInElement(tempDiv, {
+      renderMathInElement(div, {
         delimiters: [
-          {left: '$$', right: '$$', display: true},
-          {left: '$', right: '$', display: false},
-          {left: '\\[', right: '\\]', display: true},
-          {left: '\\(', right: '\\)', display: false}
+          { left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false },
+          { left: '\\[', right: '\\]', display: true }, { left: '\\(', right: '\\)', display: false }
         ],
-        throwOnError: false,
-        trust: true,
-        // Allow processing in all elements
-        ignoredTags: [],
-        ignoredClasses: []
+        throwOnError: false, trust: true, ignoredTags: [], ignoredClasses: []
       });
-    } catch (e) {
-      console.warn('LaTeX rendering failed:', e);
-    }
+    } catch(e) { console.warn('LaTeX error:', e); }
   }
-  
-  return tempDiv.innerHTML;
+  return div.innerHTML;
 }
 
-function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
-}
-
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 160) + 'px';
-}
+function handleKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); } }
+function autoResize(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 160) + 'px'; }
 
 function showToast(icon, msg, type) {
   const toast = document.getElementById('upload-toast');
   document.getElementById('toast-icon').textContent = icon;
-  document.getElementById('toast-msg').textContent  = msg;
+  document.getElementById('toast-msg').textContent = msg;
   toast.className = `visible ${type}`;
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => { toast.className = ''; }, 3500);
 }
 
-//loading messages
 function startStageProgress(messageId) {
   const el = document.querySelector(`#${messageId} .message-text`);
   if (!el) return;
-
-  const stages = [
-    { t: 200,  msg: "Retrieving relevant chunks…" },
-    { t: 900,  msg: "Reranking for best matches…" },
-    { t: 1600, msg: "Generating answer…" }
-  ];
-
+  const stages = [{ msg: 'Retrieving relevant chunks…' }, { msg: 'Reranking for best matches…' }, { msg: 'Generating answer…' }];
   let i = 0;
-  stageTimer = setInterval(() => {
-    if (i >= stages.length) return clearInterval(stageTimer);
-    el.innerHTML = renderMarkdown(stages[i].msg);
-    i++;
-  }, 700);
-}
-
-function stopStageProgress() {
-  if (stageTimer) clearInterval(stageTimer);
-  stageTimer = null;
+  stageTimer = setInterval(() => { if (i >= stages.length) return clearInterval(stageTimer); el.innerHTML = renderMarkdown(stages[i].msg); i++; }, 700);
 }
 
 function openDocModal(title, bodyHtml) {
   document.getElementById('doc-modal-title').textContent = title || 'Document';
-  document.getElementById('doc-modal-body').innerHTML = bodyHtml || 'No preview available.';
+  document.getElementById('doc-modal-body').innerHTML = bodyHtml || 'No preview.';
   document.getElementById('doc-modal').style.display = 'flex';
 }
-
-function closeDocModal() {
-  document.getElementById('doc-modal').style.display = 'none';
-}
+function closeDocModal() { document.getElementById('doc-modal').style.display = 'none'; }
+document.getElementById('doc-modal')?.addEventListener('click', e => { if (e.target.id === 'doc-modal') closeDocModal(); });
 
 function toggleWebSearch() {
   webSearchEnabled = !webSearchEnabled;
   showToast('🌐', webSearchEnabled ? 'Web search enabled' : 'Web search disabled', 'success');
-  _syncAddMenuState(); 
+  _syncAddMenuState();
 }
-
-// ── Add menu toggle ────────────────────────────────────────
 function toggleAddMenu() {
   const menu = document.getElementById('add-menu');
-  const btn  = document.getElementById('add-btn');
+  const btn = document.getElementById('add-btn');
   const open = menu.style.display === 'none' || menu.style.display === '';
   menu.style.display = open ? 'block' : 'none';
   btn.classList.toggle('active', open);
-
-  if (open) {
-    setTimeout(() => document.addEventListener('click', _closeAddMenu, { once: true }), 0);
-  }
+  if (open) setTimeout(() => document.addEventListener('click', _closeAddMenu, { once: true }), 0);
 }
-
 function _closeAddMenu(e) {
   const wrap = document.querySelector('.add-btn-wrap');
   if (wrap && wrap.contains(e.target)) return;
-  document.getElementById('add-menu').style.display  = 'none';
-  document.getElementById('add-btn').classList.remove('active');
-}
-
-// ── Web search option ──────────────────────────────────────
-function selectWebSearch() {
-  toggleWebSearch();                          // existing toggle logic
-  _syncAddMenuState();
   document.getElementById('add-menu').style.display = 'none';
   document.getElementById('add-btn').classList.remove('active');
 }
-
-// ── Diagram option ──────────────────────────────────────
+function selectWebSearch() {
+  toggleWebSearch();
+  document.getElementById('add-menu').style.display = 'none';
+  document.getElementById('add-btn').classList.remove('active');
+}
 function selectDiagram() {
   diagramEnabled = !diagramEnabled;
   document.getElementById('diagram-check').style.display = diagramEnabled ? 'inline' : 'none';
-  document.getElementById('diagram-pill').style.display  = diagramEnabled ? 'inline-flex' : 'none';
-  document.getElementById('active-features').style.display = 
-    (diagramEnabled || webSearchEnabled) ? 'flex' : 'none';
-  document.getElementById('add-menu').style.display = 'none';  // replaces closeAddMenu()
-  showToast('🔀', diagramEnabled ? 'Diagram mode enabled' : 'Diagram mode disabled', 'success');
+  document.getElementById('diagram-pill').style.display = diagramEnabled ? 'inline-flex' : 'none';
+  document.getElementById('add-menu').style.display = 'none';
+  _syncAddMenuState();
+  showToast('🔀', diagramEnabled ? 'Diagram mode on' : 'Diagram mode off', 'success');
 }
-
-// ── Quiz option ────────────────────────────────────────────
 function selectQuiz() {
   document.getElementById('add-menu').style.display = 'none';
   document.getElementById('add-btn').classList.remove('active');
-  openQuizModal();                            // existing quiz modal function
+  openQuizModal();
 }
-
-// ── Sync pill + checkmark with webSearchEnabled state ─────
 function _syncAddMenuState() {
-  const pill      = document.getElementById('web-pill');
-  const check     = document.getElementById('web-check');
-  const features  = document.getElementById('active-features');
-
-  if (pill)  pill.style.display  = webSearchEnabled ? 'inline-flex' : 'none';
-  if (check) check.style.display = webSearchEnabled ? 'inline'      : 'none';
-
-  // Show/hide the features row
-  const anyActive = webSearchEnabled;
+  const pill = document.getElementById('web-pill');
+  const check = document.getElementById('web-check');
+  const features = document.getElementById('active-features');
+  if (pill) pill.style.display = webSearchEnabled ? 'inline-flex' : 'none';
+  if (check) check.style.display = webSearchEnabled ? 'inline' : 'none';
+  const anyActive = webSearchEnabled || diagramEnabled || scopedFolderIds.length > 0;
   if (features) features.style.display = anyActive ? 'flex' : 'none';
 }
 
-
-function highlightText(fullText, needle) {
-  if (!needle || needle.length < 20) return escapeHtml(fullText);
-
-  // Escape regex chars
-  const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  // Keep it safe: limit needle length so we don't nuke performance
-  const shortNeedle = needle.slice(0, 400);
-  const escShort = shortNeedle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  const re = new RegExp(escShort, 'gi');
-  const safeFull = escapeHtml(fullText);
-
-  // Highlight by applying regex on the escaped full text is messy (entities change length),
-  // so we do a simple approach: highlight on raw first, then escape in parts.
-  const parts = fullText.split(new RegExp(`(${escShort})`, 'i'));
-
-  return parts.map(p => {
-    if (p.toLowerCase() === shortNeedle.toLowerCase()) {
-      return `<mark style="background: rgba(16,163,127,0.35); color: inherit; padding: 0 2px; border-radius: 3px;">${escapeHtml(p)}</mark>`;
-    }
-    return escapeHtml(p);
-  }).join('');
-}
-function openWebSource(url, idx) {
-  setActiveSource(idx);
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-// Close when clicking outside modal
-document.getElementById('doc-modal')?.addEventListener('click', (e) => {
-  if (e.target.id === 'doc-modal') closeDocModal();
-});
-
-// ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════
 // QUIZ
-// ══════════════════════════════════════════════════════════
-let _currentQuiz    = null;
-let _quizAnswers    = {};
-let _quizSubmitted  = false;
+// ══════════════════════════════════════════════
+let _currentQuiz = null, _quizAnswers = {}, _quizSubmitted = false;
 
 function openQuizModal() {
   closeQuiz();
-  const overlay = document.getElementById('quiz-modal-overlay');
-  overlay.classList.add('visible');
+  document.getElementById('quiz-modal-overlay').classList.add('visible');
   document.getElementById('quiz-error').textContent = '';
+<<<<<<< Updated upstream
 
   // Populate folder scope state
   setQuizScope(_quizScope);
@@ -1366,25 +1211,27 @@ function openQuizModal() {
     if (currentUser) note.textContent = `📂 Quiz will use all your uploaded documents.`;
     else note.textContent = `ℹ️ Log in to scope the quiz to your documents.`;
   }
+=======
+  renderFolderChecklist('quiz-folder-checklist', scopedFolderIds);
+  const note = document.getElementById('quiz-scope-note');
+  if (!currentUser) note.textContent = 'ℹ️ Log in to scope quiz to your documents.';
+  else note.textContent = folders.length > 0 ? '' : 'ℹ️ Create folders to scope quiz content.';
+>>>>>>> Stashed changes
 }
-
-function closeQuizModal() {
-  document.getElementById('quiz-modal-overlay').classList.remove('visible');
-}
-
+function closeQuizModal() { document.getElementById('quiz-modal-overlay').classList.remove('visible'); }
 document.getElementById('quiz-modal-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('quiz-modal-overlay')) closeQuizModal();
 });
 
 async function generateQuiz() {
-  const btn   = document.getElementById('quiz-generate-btn');
+  const btn = document.getElementById('quiz-generate-btn');
   const errEl = document.getElementById('quiz-error');
   errEl.textContent = '';
-
-  const numQ  = parseInt(document.getElementById('quiz-num').value) || 5;
-  const diff  = document.getElementById('quiz-difficulty').value;
+  const numQ = parseInt(document.getElementById('quiz-num').value) || 5;
+  const diff = document.getElementById('quiz-difficulty').value;
   const qType = document.getElementById('quiz-type').value;
   const topic = document.getElementById('quiz-topic').value.trim();
+<<<<<<< Updated upstream
 
   // Determine document / folder scope
   let docIds     = [];
@@ -1396,12 +1243,19 @@ async function generateQuiz() {
     folderIds = [..._quizFolderIds];
   } else if (_quizScope === 'chat') {
     folderIds = [...chatScopeFolderIds];
+=======
+  const quizFolderIds = [];
+  document.querySelectorAll('#quiz-folder-checklist input[type="checkbox"]').forEach(cb => {
+    if (cb.checked) quizFolderIds.push(parseInt(cb.value));
+  });
+  let docIds = [];
+  if (currentSession) {
+    try { const r = await authFetch(`/api/sessions/${currentSession}`); const d = await r.json(); docIds = d.document_ids || []; } catch {}
+>>>>>>> Stashed changes
   }
-
-  btn.disabled    = true;
-  btn.textContent = 'Generating…';
-
+  btn.disabled = true; btn.textContent = 'Generating…';
   try {
+<<<<<<< Updated upstream
     const res  = await authFetch('/api/quiz/generate', {
       method : 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1413,58 +1267,42 @@ async function generateQuiz() {
         document_ids : docIds,
         folder_ids   : folderIds,
       }),
+=======
+    const payload = { num_questions: numQ, difficulty: diff, question_type: qType, topic, document_ids: docIds };
+    if (quizFolderIds.length > 0) payload.folder_ids = quizFolderIds;
+    const res = await authFetch('/api/quiz/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+>>>>>>> Stashed changes
     });
     const data = await res.json();
-
-    if (!res.ok) {
-      errEl.textContent = data.error || 'Failed to generate quiz.';
-      return;
-    }
-
-    closeQuizModal();
-    _startQuiz(data.quiz);
-
-  } catch {
-    errEl.textContent = 'Could not reach the backend.';
-  } finally {
-    btn.disabled    = false;
-    btn.textContent = 'Generate Quiz';
-  }
+    if (!res.ok) { errEl.textContent = data.error || 'Failed to generate quiz.'; return; }
+    closeQuizModal(); _startQuiz(data.quiz);
+  } catch { errEl.textContent = 'Could not reach the backend.'; }
+  finally { btn.disabled = false; btn.textContent = 'Generate Quiz'; }
 }
 
 function _startQuiz(quiz) {
-  _currentQuiz   = quiz;
-  _quizAnswers   = {};
-  _quizSubmitted = false;
-
+  _currentQuiz = quiz; _quizAnswers = {}; _quizSubmitted = false;
   quiz.questions.forEach(q => { _quizAnswers[q.id] = new Set(); });
-
   const view = document.getElementById('quiz-view');
   view.style.display = 'flex';
   document.getElementById('quiz-results').style.display = 'none';
   document.getElementById('quiz-results').classList.remove('visible');
   document.getElementById('quiz-footer').style.display = 'block';
   document.getElementById('quiz-questions').style.display = 'flex';
-
   const cfg = quiz.config;
-  document.getElementById('quiz-badge').textContent =
-    `${cfg.difficulty} · ${cfg.question_type.replace('_', '-')}`;
-  document.getElementById('quiz-progress').textContent =
-    `${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''}`;
-
+  document.getElementById('quiz-badge').textContent = `${cfg.difficulty} · ${cfg.question_type.replace('_', '-')}`;
+  document.getElementById('quiz-progress').textContent = `${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''}`;
   const container = document.getElementById('quiz-questions');
   container.innerHTML = '';
-  quiz.questions.forEach((q, idx) => {
-    container.appendChild(_buildQuestionCard(q, idx + 1));
-  });
+  quiz.questions.forEach((q, idx) => container.appendChild(_buildQuestionCard(q, idx + 1)));
 }
 
 function _buildQuestionCard(q, num) {
   const isMulti = q.type === 'multi_select';
-  const card    = document.createElement('div');
-  card.className = 'quiz-card';
-  card.id = `quiz-card-${q.id}`;
-
+  const card = document.createElement('div');
+  card.className = 'quiz-card'; card.id = `quiz-card-${q.id}`;
   card.innerHTML = `
     <div class="quiz-card-header">
       <span class="quiz-q-num">Q${num}</span>
@@ -1474,126 +1312,74 @@ function _buildQuestionCard(q, num) {
     <div class="quiz-options" id="quiz-opts-${q.id}">
       ${q.options.map(opt => {
         const label = opt.charAt(0);
-        return `
-          <div class="quiz-option" id="quiz-opt-${q.id}-${label}"
-               onclick="selectOption(${q.id}, '${label}', ${isMulti})">
-            <span class="opt-label">${label}</span>
-            <span>${opt.slice(3)}</span>
-          </div>`;
+        return `<div class="quiz-option" id="quiz-opt-${q.id}-${label}" onclick="selectOption(${q.id},'${label}',${isMulti})">
+          <span class="opt-label">${label}</span><span>${opt.slice(3)}</span></div>`;
       }).join('')}
     </div>
-    <div class="quiz-explanation" id="quiz-exp-${q.id}">
-      💡 ${q.explanation}
-    </div>
-  `;
+    <div class="quiz-explanation" id="quiz-exp-${q.id}">💡 ${q.explanation}</div>`;
   return card;
 }
 
 function selectOption(qId, label, isMulti) {
   if (_quizSubmitted) return;
   const answers = _quizAnswers[qId];
-
-  if (isMulti) {
-    if (answers.has(label)) answers.delete(label);
-    else                    answers.add(label);
-  } else {
-    answers.clear();
-    answers.add(label);
-  }
-
+  if (isMulti) { if (answers.has(label)) answers.delete(label); else answers.add(label); }
+  else { answers.clear(); answers.add(label); }
   const q = _currentQuiz.questions.find(x => x.id === qId);
   q.options.forEach(opt => {
-    const optLabel = opt.charAt(0);
-    const el       = document.getElementById(`quiz-opt-${qId}-${optLabel}`);
-    el.classList.toggle('selected', answers.has(optLabel));
+    const l = opt.charAt(0);
+    document.getElementById(`quiz-opt-${qId}-${l}`).classList.toggle('selected', answers.has(l));
   });
 }
 
 function submitQuiz() {
   if (!_currentQuiz) return;
   _quizSubmitted = true;
-
   let correct = 0;
-  const questions = _currentQuiz.questions;
-
-  questions.forEach(q => {
-    const userAnswers    = _quizAnswers[q.id];
-    const correctAnswers = new Set(q.correct);
-    const isCorrect      =
-      userAnswers.size === correctAnswers.size &&
-      [...userAnswers].every(a => correctAnswers.has(a));
-
-    if (isCorrect) correct++;
-
+  _currentQuiz.questions.forEach(q => {
+    const ua = _quizAnswers[q.id], ca = new Set(q.correct);
+    const ok = ua.size === ca.size && [...ua].every(a => ca.has(a));
+    if (ok) correct++;
     q.options.forEach(opt => {
-      const label      = opt.charAt(0);
-      const el         = document.getElementById(`quiz-opt-${q.id}-${label}`);
-      const isCorrectOpt = correctAnswers.has(label);
-      const wasSelected  = userAnswers.has(label);
-
-      el.classList.add('locked');
-      el.classList.remove('selected');
-
-      if (wasSelected && isCorrectOpt)  el.classList.add('correct');
-      else if (wasSelected)             el.classList.add('wrong');
-      else if (isCorrectOpt)            el.classList.add('missed');
+      const l = opt.charAt(0), el = document.getElementById(`quiz-opt-${q.id}-${l}`);
+      el.classList.add('locked'); el.classList.remove('selected');
+      if (ua.has(l) && ca.has(l)) el.classList.add('correct');
+      else if (ua.has(l)) el.classList.add('wrong');
+      else if (ca.has(l)) el.classList.add('missed');
     });
-
     document.getElementById(`quiz-exp-${q.id}`).classList.add('visible');
   });
-
-  document.getElementById('quiz-footer').style.display    = 'none';
+  document.getElementById('quiz-footer').style.display = 'none';
   document.getElementById('quiz-questions').style.display = 'none';
-  _showResults(correct, questions.length);
+  _showResults(correct, _currentQuiz.questions.length);
 }
 
 function _showResults(correct, total) {
   const pct = Math.round((correct / total) * 100);
-  const msg = pct === 100 ? '🏆 Perfect score!'
-            : pct >= 80   ? '🎉 Great job!'
-            : pct >= 60   ? '👍 Good effort!'
-            : pct >= 40   ? '📚 Keep studying!'
-            :                '💪 Review the material and try again!';
-
+  const msg = pct === 100 ? '🏆 Perfect!' : pct >= 80 ? '🎉 Great job!' : pct >= 60 ? '👍 Good effort!' : pct >= 40 ? '📚 Keep studying!' : '💪 Try again!';
   document.getElementById('quiz-score-banner').innerHTML = `
     <div class="score-number">${correct}/${total}</div>
     <div class="score-label">${pct}% correct</div>
-    <div class="score-msg">${msg}</div>
-  `;
-
+    <div class="score-msg">${msg}</div>`;
   const review = document.getElementById('quiz-review');
   review.innerHTML = '';
   _currentQuiz.questions.forEach((q, idx) => {
-    const userAnswers    = _quizAnswers[q.id];
-    const correctAnswers = new Set(q.correct);
-    const isCorrect      =
-      userAnswers.size === correctAnswers.size &&
-      [...userAnswers].every(a => correctAnswers.has(a));
-
-    const card = document.createElement('div');
-    card.className = 'quiz-card';
+    const ua = _quizAnswers[q.id], ca = new Set(q.correct);
+    const ok = ua.size === ca.size && [...ua].every(a => ca.has(a));
+    const card = document.createElement('div'); card.className = 'quiz-card';
     card.innerHTML = `
-      <div class="quiz-card-header">
-        <span class="quiz-q-num">Q${idx + 1}</span>
-        <span style="font-size:13px">${isCorrect ? '✅' : '❌'}</span>
-        <span class="quiz-q-text">${q.question}</span>
-      </div>
+      <div class="quiz-card-header"><span class="quiz-q-num">Q${idx+1}</span><span style="font-size:13px">${ok ? '✅' : '❌'}</span><span class="quiz-q-text">${q.question}</span></div>
       <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">
-        Your answer: <strong style="color:var(--text-primary)">${[...userAnswers].join(', ') || '—'}</strong>
-        &nbsp;|&nbsp;
-        Correct: <strong style="color:var(--accent)">${q.correct.join(', ')}</strong>
-      </div>
-      <div class="quiz-explanation visible">💡 ${q.explanation}</div>
-    `;
+        Your answer: <strong style="color:var(--text-primary)">${[...ua].join(', ') || '—'}</strong> | Correct: <strong style="color:var(--accent)">${q.correct.join(', ')}</strong></div>
+      <div class="quiz-explanation visible">💡 ${q.explanation}</div>`;
     review.appendChild(card);
   });
-
-  const resultsEl = document.getElementById('quiz-results');
-  resultsEl.style.display = 'flex';
-  resultsEl.classList.add('visible');
+  const r = document.getElementById('quiz-results');
+  r.style.display = 'flex'; r.classList.add('visible');
 }
 
 function closeQuiz() {
+<<<<<<< Updated upstream
   const view = document.getElementById('quiz-view');
   if (view) view.style.display = 'none';
   _currentQuiz   = null;
@@ -1907,3 +1693,8 @@ document.addEventListener('click', e => {
 // Reload folders after login
 const _origRestoreSession = window.restoreSession;
 const _afterAuthHook = async () => { if (currentToken) await loadFolders(); };
+=======
+  const v = document.getElementById('quiz-view'); if (v) v.style.display = 'none';
+  _currentQuiz = null; _quizAnswers = {}; _quizSubmitted = false;
+}
+>>>>>>> Stashed changes

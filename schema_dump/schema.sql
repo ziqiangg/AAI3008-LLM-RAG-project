@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Table: folders
 CREATE TABLE IF NOT EXISTS folders (
+<<<<<<< Updated upstream
     id         SERIAL PRIMARY KEY,
     user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
     name       VARCHAR(255) NOT NULL,
@@ -36,6 +37,25 @@ CREATE TABLE IF NOT EXISTS documents (
     file_type   VARCHAR(50), -- e.g., 'pdf', 'docx'
     title       TEXT,
     subject     TEXT[], -- Array of subjects, e.g., ['Math', 'Physics']
+=======
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, name)
+);
+
+-- Table: documents
+CREATE TABLE IF NOT EXISTS documents (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+    filename VARCHAR(255) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_type VARCHAR(50), -- e.g., 'pdf', 'docx'
+    title TEXT,
+    subject TEXT[], -- Array of subjects, e.g., ['Math', 'Physics']
+>>>>>>> Stashed changes
     upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     chunk_count INTEGER DEFAULT 0
 );

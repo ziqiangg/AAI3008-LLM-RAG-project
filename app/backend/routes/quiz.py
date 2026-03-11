@@ -41,6 +41,7 @@ def generate_quiz():                          # ← route function keeps the nam
         question_type = data.get('question_type', 'mcq').lower()
         topic         = data.get('topic', '').strip()
         document_ids  = data.get('document_ids') or []
+        folder_ids    = data.get('folder_ids') or []
 
         # ── Expand folder_ids → document_ids if provided ─────────
         folder_ids = data.get('folder_ids') or []
@@ -59,6 +60,22 @@ def generate_quiz():                          # ← route function keeps the nam
             return jsonify({'error': 'difficulty must be easy, medium, or hard'}), 400
         if question_type not in ('mcq', 'multi_select', 'mixed'):
             return jsonify({'error': 'question_type must be mcq, multi_select, or mixed'}), 400
+
+        # ── Resolve folder_ids to document_ids ─────────────────
+        if folder_ids:
+            from app.backend.models import Document as DocModel
+            with get_db_session() as db_resolve:
+                folder_doc_rows = (
+                    db_resolve.query(DocModel.id)
+                    .filter(DocModel.folder_id.in_(folder_ids))
+                    .all()
+                )
+                folder_doc_ids = [r.id for r in folder_doc_rows]
+                if document_ids:
+                    document_ids = list(set(document_ids) & set(folder_doc_ids))
+                else:
+                    document_ids = folder_doc_ids
+                logger.info(f"[Quiz] Folder filter: folder_ids={folder_ids} → {len(document_ids)} docs")
 
         # ── Embed retrieval query ─────────────────────────────────
         retrieval_query = topic if topic else 'key concepts definitions important facts'

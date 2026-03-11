@@ -44,7 +44,11 @@ def upload_document():
 
     subject = request.form.get("subject", "General")
     user_id = request.form.get("user_id", type=int)
+<<<<<<< Updated upstream
     folder_id = request.form.get("folder_id", type=int)  # optional folder
+=======
+    folder_id = request.form.get("folder_id", type=int)  # Optional folder
+>>>>>>> Stashed changes
 
     # Save file to disk
     filename = secure_filename(file.filename)
@@ -62,10 +66,16 @@ def upload_document():
                 user_id=user_id,
                 subject=subject,
             )
+<<<<<<< Updated upstream
             # Assign folder if provided
             if folder_id:
                 doc.folder_id = folder_id
                 session.commit()
+=======
+            # Assign to folder if specified (context manager will commit)
+            if folder_id is not None:
+                doc.folder_id = folder_id
+>>>>>>> Stashed changes
             return jsonify({
                 "message": "Document uploaded and ingested successfully.",
                 "document": doc.to_dict(),
@@ -155,6 +165,10 @@ def update_document(doc_id: int):
         
         data = request.get_json()
         
+        # Allow moving document to a folder (or unfiled with null)
+        if 'folder_id' in data:
+            doc.folder_id = data['folder_id']  # None means unfiled
+
         if 'subject' in data:
             new_subject = data['subject']
             

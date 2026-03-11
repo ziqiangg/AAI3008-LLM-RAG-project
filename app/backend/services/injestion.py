@@ -735,7 +735,7 @@ def run_ingestion_pipeline(
     print(f"     → {len(chunks)} raw chunks")
 
     # ── 2b. Clean + Filter (BEFORE EMBEDDING/STORING) ──
-    MIN_CHUNK_LEN = 140  # slightly higher: removes more junk
+    MIN_CHUNK_LEN = 30  # lowered: avoids rejecting short but valid content
     cleaned_chunks: List[LCDocument] = []
 
     for c in chunks:

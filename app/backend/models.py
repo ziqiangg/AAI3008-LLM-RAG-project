@@ -25,8 +25,13 @@ class User(Base):
     
     # Relationships
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
+<<<<<<< Updated upstream
     sessions  = relationship("Session",  back_populates="user", cascade="all, delete-orphan")
     folders   = relationship("Folder",   back_populates="user", cascade="all, delete-orphan")
+=======
+    sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
+    folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
+>>>>>>> Stashed changes
     
     def to_dict(self):
         """Convert model to dictionary"""
@@ -43,13 +48,20 @@ class User(Base):
 
 
 class Folder(Base):
+<<<<<<< Updated upstream
     """Folder model for organizing documents"""
+=======
+    """Folder model for organizing uploaded documents"""
+>>>>>>> Stashed changes
     __tablename__ = 'folders'
 
     id         = Column(Integer, primary_key=True)
     user_id    = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     name       = Column(String(255), nullable=False)
+<<<<<<< Updated upstream
     color      = Column(String(20), default='#6c63ff')  # hex colour for UI badge
+=======
+>>>>>>> Stashed changes
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
     # Relationships
@@ -58,12 +70,20 @@ class Folder(Base):
 
     def to_dict(self):
         return {
+<<<<<<< Updated upstream
             'id':         self.id,
             'user_id':    self.user_id,
             'name':       self.name,
             'color':      self.color,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'doc_count':  len(self.documents),
+=======
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'document_count': len(self.documents) if self.documents else 0,
+>>>>>>> Stashed changes
         }
 
     def __repr__(self):
@@ -86,7 +106,11 @@ class Document(Base):
     chunk_count = Column(Integer, default=0)
     
     # Relationships
+<<<<<<< Updated upstream
     user   = relationship("User", back_populates="documents")
+=======
+    user = relationship("User", back_populates="documents")
+>>>>>>> Stashed changes
     folder = relationship("Folder", back_populates="documents")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
     
