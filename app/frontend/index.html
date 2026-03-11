@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<<<<<<< Updated upstream
   <!-- Main Stylesheet (performance-optimized separate file) -->
   <link rel="stylesheet" href="styles.css">
   <!-- Mermaid – diagram rendering -->
@@ -20,6 +21,11 @@
   <!-- Desmos – graphing calculator -->
   <!-- <script src="https://www.desmos.com/api/v1.9/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script> -->
   <script defer src="app.js"></script>
+=======
+  <link rel="stylesheet" href="styles.css?v=20260312e">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script defer src="app.js?v=20260312e"></script>
+>>>>>>> Stashed changes
 </head>
 <body>
 
@@ -232,7 +238,61 @@
 
   </div>
 </div>
+<<<<<<< Updated upstream
 <!-- ── Quiz Config Modal ─────────────────────────── -->
+=======
+
+<!-- ── Create / Rename Folder Modal ── -->
+<div id="folder-modal-overlay" class="generic-modal-overlay">
+  <div class="generic-modal folder-modal-card">
+    <div class="modal-header">
+      <h2 id="folder-modal-title">New Folder</h2>
+      <button onclick="closeFolderModal()">&#10005;</button>
+    </div>
+    <p id="folder-modal-copy" class="folder-modal-copy">Create a place for related documents so your sidebar stays tidy.</p>
+    <div class="modal-form">
+      <input type="text" id="folder-name-input" placeholder="Folder name" maxlength="100"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();submitFolderModal();}" />
+    </div>
+    <button id="folder-modal-submit" onclick="submitFolderModal()">Create Folder</button>
+    <div id="folder-modal-error" class="modal-error"></div>
+  </div>
+</div>
+
+<div id="folder-delete-modal-overlay" class="generic-modal-overlay">
+  <div class="generic-modal folder-delete-modal">
+    <div class="modal-header">
+      <h2>Delete Folder</h2>
+      <button onclick="closeFolderDeleteModal()">&#10005;</button>
+    </div>
+    <p class="folder-delete-copy">
+      This will remove the folder itself, but the documents inside will stay in your library and move to Unfiled.
+      <span id="folder-delete-modal-name" class="folder-delete-name"></span>
+    </p>
+    <div class="modal-actions">
+      <button class="modal-button-secondary" onclick="closeFolderDeleteModal()">Cancel</button>
+      <button class="modal-button-danger" onclick="confirmDeleteFolder()">Delete Folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Folder Scope Picker Modal ── -->
+<div id="folder-scope-modal-overlay" class="generic-modal-overlay">
+  <div class="generic-modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h2>📁 Select Folders</h2>
+      <button onclick="closeFolderScopeModal()">✕</button>
+    </div>
+    <p style="font-size:13px; color:var(--text-muted); margin:0 0 12px;">Choose folders the conversation should draw from:</p>
+    <div id="folder-scope-checklist" class="folder-scope-checklist"></div>
+    <div style="display:flex; gap:8px; margin-top:14px;">
+      <button onclick="applyFolderScope()" style="flex:1;">Apply to Chat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Quiz Config Modal ── -->
+>>>>>>> Stashed changes
 <div id="quiz-modal-overlay">
   <div id="quiz-modal">
     <div class="modal-header">

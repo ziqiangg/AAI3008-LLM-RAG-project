@@ -37,10 +37,16 @@ def create_app(config_name=None):
     # ── Frontend ──────────────────────────────────────────────────
     @app.route('/')
     def frontend():
-        return send_from_directory(
-            os.path.join(os.path.dirname(__file__), '../frontend'),
-            'index.html'
+        response = make_response(
+            send_from_directory(
+                os.path.join(os.path.dirname(__file__), '../frontend'),
+                'index.html'
+            )
         )
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
         
     # Serve static files from frontend folder with caching
     @app.route('/<path:filename>')
