@@ -1,7 +1,7 @@
 # app/backend/services/ingestion.py
 import os
 import re
-from typing import List, Optional, Dict, Any
+from typing import Callable, List, Optional, Dict, Any
 from collections import defaultdict
 
 try:
@@ -699,42 +699,60 @@ def run_ingestion_pipeline(
     file_path: str,
     user_id: Optional[int] = None,
     subject: Optional[str] = None,
+    progress_callback: Optional[Callable[..., None]] = None,
 ) -> Document:
     filename = os.path.basename(file_path)
     file_ext = os.path.splitext(filename)[1].lstrip(".")
 
-    # ── 1. Load ──
+    def report(progress: Optional[int] = None, status_message: Optional[str] = None, **details) -> None:
+        if progress_callback is None:
+            return
+        payload = {key: value for key, value in details.items() if value is not None}
+        if progress is not None:
+            payload["progress"] = progress
+        if status_message:
+            payload["status_message"] = status_message
+        if payload:
+            progress_callback(**payload)
+
+    report(20, "Reading document")
+
+    # ?????? 1. Load ??????
     print(f"[1] Loading  : {filename}")
     lc_docs = load_document(file_path)
-    print(f"     → {len(lc_docs)} page(s)/element-doc(s) loaded")
+    print(f"     ??? {len(lc_docs)} page(s)/element-doc(s) loaded")
+    report(30, f"Loaded {len(lc_docs)} page(s)")
 
-    # ── 1b. Classify Document Subjects ──
+    # ?????? 1b. Classify Document Subjects ??????
     print("[1b] Classifying document subjects...")
+    report(40, "Classifying subject")
     embeddings_model = get_embeddings()
-    
+
     # Extract sample from first few documents/pages
     content_sample = ""
     for doc in lc_docs[:5]:  # First 5 pages/elements
         content_sample += doc.page_content + "\n"
     content_sample = content_sample[:3000]  # Limit to 3000 chars
-    
+
     # Classify subjects
     classified_subjects = classification.classify_document_subjects(
         content_sample=content_sample,
         embeddings_model=embeddings_model
     )
-    
+
     # Extract subject names for document record
     document_subjects = [s['name'] for s in classified_subjects]
-    print(f"     → Classified as: {', '.join(document_subjects)}")
-    print(f"     → Confidence: {classified_subjects[0]['confidence']:.2f}")
+    print(f"     ??? Classified as: {', '.join(document_subjects)}")
+    print(f"     ??? Confidence: {classified_subjects[0]['confidence']:.2f}")
+    report(48, "Subject classified", subjects=document_subjects)
 
-    # ── 2. Chunk ──
+    # ?????? 2. Chunk ??????
     print("[2] Chunking : method=semantic_embedding")
+    report(58, "Chunking document", subjects=document_subjects)
     chunks = split_documents_by_type(lc_docs, file_ext)
-    print(f"     → {len(chunks)} raw chunks")
+    print(f"     ??? {len(chunks)} raw chunks")
 
-    # ── 2b. Clean + Filter (BEFORE EMBEDDING/STORING) ──
+    # ?????? 2b. Clean + Filter (BEFORE EMBEDDING/STORING) ??????
     MIN_CHUNK_LEN = 30  # lowered: avoids rejecting short but valid content
     cleaned_chunks: List[LCDocument] = []
 
@@ -751,7 +769,8 @@ def run_ingestion_pipeline(
         cleaned_chunks.append(c)
 
     chunks = cleaned_chunks
-    print(f"     → {len(chunks)} cleaned chunks kept")
+    print(f"     ??? {len(chunks)} cleaned chunks kept")
+    report(68, "Chunks prepared", subjects=document_subjects, chunk_count=len(chunks))
 
     if not chunks:
         raise ValueError(
@@ -759,19 +778,21 @@ def run_ingestion_pipeline(
             "Try lowering MIN_CHUNK_LEN or check the document extraction quality."
         )
 
-    # ── 3. Embed ──
+    # ?????? 3. Embed ??????
     print(f"[3] Embedding: {len(chunks)} chunks via {Config.EMBEDDING_MODEL}")
+    report(76, "Generating embeddings", subjects=document_subjects, chunk_count=len(chunks))
     texts = [c.page_content for c in chunks]
     vectors = embed_texts(texts)
 
     if not vectors or not vectors[0]:
         raise RuntimeError("Embedding failed: got empty vectors.")
-    print(f"     → dim={len(vectors[0])}")
-    
-    # ── 3b. Classify Chunk Topics ──
+    print(f"     ??? dim={len(vectors[0])}")
+
+    # ?????? 3b. Classify Chunk Topics ??????
     print(f"[3b] Classifying topics for {len(chunks)} chunks...")
+    report(84, "Classifying chunk topics", subjects=document_subjects, chunk_count=len(chunks))
     chunk_classifications = []
-    
+
     for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
         # Classify topics for this chunk
         topics = classification.classify_chunk_topics(
@@ -780,10 +801,10 @@ def run_ingestion_pipeline(
             document_subjects=document_subjects
         )
         chunk_classifications.append(topics)
-    
-    print(f"     → Topic classification complete")
 
-    # ── 4. Create Document row ──
+    print(f"     ??? Topic classification complete")
+
+    # ?????? 4. Create Document row ??????
     doc = Document(
         user_id=user_id,
         filename=filename,
@@ -795,9 +816,10 @@ def run_ingestion_pipeline(
     )
     db_session.add(doc)
     db_session.flush()
-    print(f"[4] Document row created → id={doc.id}")
+    print(f"[4] Document row created ??? id={doc.id}")
+    report(90, "Saving document", document_id=doc.id, subjects=document_subjects, chunk_count=len(chunks))
 
-    # ── 5. Insert chunks ──
+    # ?????? 5. Insert chunks ??????
     # Keep params in one place so metadata matches real behavior
     semantic_params = {
         "similarity_threshold": 0.55,
@@ -805,17 +827,19 @@ def run_ingestion_pipeline(
         "min_chunk_chars": 300 if file_ext.lower() in ["pdf", "docx"] else 250,
     }
 
+    progress_step = max(1, len(chunks) // 4) if chunks else 1
+
     for idx, (chunk, vector) in enumerate(zip(chunks, vectors)):
         # Get topic classification for this chunk
         topics = chunk_classifications[idx]
-        
+
         # Determine dominant subject and topic for quick access
         dominant_subject = topics[0]['name'] if topics else document_subjects[0]
         dominant_topic = ""
         if topics and topics[0].get('topics'):
             top_topic = topics[0]['topics'][0]
             dominant_topic = f"{top_topic['name']}/{top_topic.get('subtopic', '')}".rstrip('/')
-        
+
         db_session.add(
             DocumentChunk(
                 document_id=doc.id,
@@ -837,9 +861,15 @@ def run_ingestion_pipeline(
             )
         )
 
+        if (idx + 1) == len(chunks) or (idx + 1) % progress_step == 0:
+            stored_ratio = (idx + 1) / len(chunks)
+            progress = min(98, 90 + int(stored_ratio * 8))
+            report(progress, f"Saving chunks ({idx + 1}/{len(chunks)})", document_id=doc.id, subjects=document_subjects, chunk_count=len(chunks))
+
     db_session.commit()
-    print(f"[5] Stored   : {len(chunks)} chunks → document_id={doc.id}")
-    print("✅  Ingestion complete.")
+    print(f"[5] Stored   : {len(chunks)} chunks ??? document_id={doc.id}")
+    print("???  Ingestion complete.")
+    report(100, "Indexed and ready", document_id=doc.id, subjects=document_subjects, chunk_count=len(chunks))
 
     # Preview first few chunks
     for i, c in enumerate(chunks[:5]):
@@ -848,6 +878,7 @@ def run_ingestion_pipeline(
         print("LEN:", len(c.page_content))
 
     return doc
+
 def _split_long_text(text: str, chunk_size: int) -> list[str]:
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=chunk_size,
