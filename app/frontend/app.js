@@ -9,6 +9,23 @@ mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose
 let webSearchEnabled = false;
 let diagramEnabled = false;
 
+// ── Folder / Scope state ───────────────────────
+let folders          = [];          // [{id, name, color, doc_count}]
+let chatScopeFolderIds = [];        // folder IDs selected for chat (empty = all)
+let _folderModalMode = 'create';    // 'create' | 'rename'
+let _folderModalId   = null;        // id when renaming
+let _folderColor     = '#6c63ff';   // currently picked colour
+let _moveDocId       = null;        // document being moved
+let _moveDocFolderId = null;        // target folder for move
+let _quizScope       = 'all';       // 'all' | 'folders' | 'chat'
+let _quizFolderIds   = [];          // for 'folders' quiz scope
+
+const FOLDER_COLORS = [
+  '#6c63ff','#10a37f','#ef4444','#f59e0b',
+  '#3b82f6','#ec4899','#14b8a6','#84cc16',
+  '#f97316','#8b5cf6','#06b6d4','#6b7280'
+];
+
 // ── State ─────────────────────────────────────
 let messages       = [];
 let msgCounter     = 0;
@@ -23,6 +40,7 @@ let stageTimer     = null;      // loading stage progress timer
 window.addEventListener('load', () => {
   loadDocuments();
   if (currentToken) restoreSession();
+  loadFolders();
 });
 
 // ══════════════════════════════════════════════
@@ -166,6 +184,7 @@ async function submitAuth() {
     updateAuthButton();
     loadSessions();
     loadDocuments();
+    loadFolders();
     showToast('👋', `Welcome, ${currentUser.username}!`, 'success');
   } catch {
     errEl.textContent = 'Could not reach the backend.';
@@ -183,6 +202,7 @@ async function restoreSession() {
       currentUser = data.user;
       updateAuthButton();
       loadSessions();
+      loadFolders();
     } else {
       logout();
     }
@@ -607,8 +627,7 @@ async function loadDocuments() {
   try {
     const res  = await fetch(`${API}/api/documents/`);
     const data = await res.json();
-    const list = document.getElementById('docs-list');
-    const docs = data.documents || data;
+    const docs = data.documents || data || [];
 
     // Build maps for quick lookup by Sources click
     window._docsById = {};
@@ -618,38 +637,104 @@ async function loadDocuments() {
       if (d.filename) window._docIdByFilename[d.filename] = d.id;
     });
 
-    if (!docs?.length) {
-      list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
-      return;
-    }
-
-    list.innerHTML = docs.map(doc => {
-      // Handle subject as array or fallback to General
-      const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : ['General']);
-      const primarySubject = subjects[0] || 'General';
-      const subjectColor = SUBJECT_COLORS[primarySubject] || SUBJECT_COLORS['General'];
-      
-      // Create subject badge with click-to-edit
-      const subjectBadge = `<span class="subject-badge" 
-        style="background:${subjectColor}20; color:${subjectColor}; border:1px solid ${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; margin-top:2px; display:inline-block;" 
-        onclick="event.stopPropagation(); editDocumentSubject(${doc.id}, ${JSON.stringify(subjects).replace(/"/g, '&quot;')})" 
-        title="Click to edit subject">${primarySubject}${subjects.length > 1 ? ` +${subjects.length-1}` : ''}</span>`;
-      
-      return `
-      <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
-        <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:6px;">
-            <span class="doc-icon">📄</span>
-            <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
-          </div>
-          ${subjectBadge}
-        </div>
-        <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
-      </div>`;
-    }).join('');
+    renderDocFolderList(docs);
   } catch(e) {
     console.warn('Could not load documents', e);
   }
+}
+
+function renderDocFolderList(docs) {
+  const container = document.getElementById('docs-folders-list');
+  if (!docs?.length && !folders?.length) {
+    container.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
+    return;
+  }
+
+  let html = '';
+
+  // Render each folder group
+  (folders || []).forEach(f => {
+    const folderDocs = docs.filter(d => d.folder_id === f.id);
+    const isOpen = true; // default open
+    html += `
+    <div class="folder-group" data-folder-id="${f.id}">
+      <div class="folder-header ${isOpen ? 'open' : ''}"
+           onclick="toggleFolderGroup(this, ${f.id})"
+           ondragover="event.preventDefault(); this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="onDropToFolder(event, ${f.id})">
+        <span class="folder-dot" style="background:${f.color}"></span>
+        <span class="folder-chevron">▶</span>
+        <span class="folder-name">${escapeHtml(f.name)}</span>
+        <span class="folder-count">${folderDocs.length}</span>
+        <div class="folder-actions">
+          <button class="folder-action-btn" onclick="event.stopPropagation(); openRenameFolderModal(${f.id}, '${escapeHtml(f.name)}', '${f.color}')" title="Rename">✏️</button>
+          <button class="folder-action-btn danger" onclick="event.stopPropagation(); deleteFolder(${f.id})" title="Delete folder">🗑</button>
+        </div>
+      </div>
+      <div class="folder-docs ${isOpen ? 'open' : ''}" id="folder-docs-${f.id}">
+        ${folderDocs.length
+          ? folderDocs.map(doc => docItemHtml(doc)).join('')
+          : `<div style="font-size:11px;color:var(--text-muted);padding:4px 8px;">Empty folder</div>`}
+      </div>
+    </div>`;
+  });
+
+  // Unorganised docs (no folder)
+  const unorg = docs.filter(d => !d.folder_id);
+  if (unorg.length) {
+    html += `<div class="unorg-section">
+      <div class="unorg-header">Unorganised</div>
+      ${unorg.map(doc => docItemHtml(doc)).join('')}
+    </div>`;
+  }
+
+  if (!html) {
+    html = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function docItemHtml(doc) {
+  const subjects  = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : ['General']);
+  const primary   = subjects[0] || 'General';
+  const color     = SUBJECT_COLORS[primary] || SUBJECT_COLORS['General'];
+  const subBadge  = `<span style="background:${color}20;color:${color};border:1px solid ${color};padding:2px 5px;border-radius:4px;font-size:9px;font-weight:600;">${primary}${subjects.length>1?` +${subjects.length-1}`:''}</span>`;
+  return `
+  <div class="doc-item" draggable="true"
+       ondragstart="onDragDocStart(event, ${doc.id})"
+       onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
+    <span class="doc-icon">📄</span>
+    <div style="flex:1;min-width:0;">
+      <div class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</div>
+      ${subBadge}
+    </div>
+    <div class="doc-actions">
+      <button class="doc-action-btn" onclick="event.stopPropagation(); openMoveDocModal(${doc.id})" title="Move to folder">📂</button>
+      <button class="doc-action-btn danger" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
+    </div>
+  </div>`;
+}
+
+function toggleFolderGroup(headerEl, folderId) {
+  headerEl.classList.toggle('open');
+  const docsEl = document.getElementById(`folder-docs-${folderId}`);
+  if (docsEl) docsEl.classList.toggle('open');
+}
+
+// ─── Drag-and-drop doc → folder ──────────────────────────
+let _dragDocId = null;
+function onDragDocStart(event, docId) {
+  _dragDocId = docId;
+  event.dataTransfer.effectAllowed = 'move';
+}
+async function onDropToFolder(event, folderId) {
+  event.preventDefault();
+  document.querySelectorAll('.folder-header').forEach(h => h.classList.remove('drag-over'));
+  if (_dragDocId == null) return;
+  await moveDocToFolder(_dragDocId, folderId);
+  _dragDocId = null;
 }
 
 // Preview as segmented chunk cards + highlight the matched chunk
@@ -982,6 +1067,10 @@ async function sendQuery() {
 
     const payload = { question: query, web_search: webSearchEnabled, diagram: diagramEnabled };
     if (currentSession) payload.session_id = currentSession;
+    // Include chat scope folder IDs if set
+    if (chatScopeFolderIds.length > 0) {
+      payload.folder_ids = chatScopeFolderIds;
+    }
     const res  = await fetch(`${API}/api/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}) },
@@ -1269,13 +1358,13 @@ function openQuizModal() {
   overlay.classList.add('visible');
   document.getElementById('quiz-error').textContent = '';
 
+  // Populate folder scope state
+  setQuizScope(_quizScope);
+
   const note = document.getElementById('quiz-scope-note');
-  if (currentSession) {
-    note.textContent = `📎 Quiz will use documents from your current session.`;
-  } else if (currentUser) {
-    note.textContent = `📂 Quiz will use all your uploaded documents.`;
-  } else {
-    note.textContent = `ℹ️ Log in to scope the quiz to your documents.`;
+  if (_quizScope === 'all') {
+    if (currentUser) note.textContent = `📂 Quiz will use all your uploaded documents.`;
+    else note.textContent = `ℹ️ Log in to scope the quiz to your documents.`;
   }
 }
 
@@ -1297,13 +1386,16 @@ async function generateQuiz() {
   const qType = document.getElementById('quiz-type').value;
   const topic = document.getElementById('quiz-topic').value.trim();
 
-  let docIds = [];
-  if (currentSession) {
-    try {
-      const r    = await authFetch(`/api/sessions/${currentSession}`);
-      const data = await r.json();
-      docIds     = data.document_ids || [];
-    } catch { /* use empty = all docs */ }
+  // Determine document / folder scope
+  let docIds     = [];
+  let folderIds  = [];
+
+  if (_quizScope === 'all') {
+    // use all docs (no filter)
+  } else if (_quizScope === 'folders') {
+    folderIds = [..._quizFolderIds];
+  } else if (_quizScope === 'chat') {
+    folderIds = [...chatScopeFolderIds];
   }
 
   btn.disabled    = true;
@@ -1319,6 +1411,7 @@ async function generateQuiz() {
         question_type: qType,
         topic        : topic,
         document_ids : docIds,
+        folder_ids   : folderIds,
       }),
     });
     const data = await res.json();
@@ -1507,3 +1600,310 @@ function closeQuiz() {
   _quizAnswers   = {};
   _quizSubmitted = false;
 }
+// ══════════════════════════════════════════════════════════════
+//  FOLDER MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+async function loadFolders() {
+  if (!currentToken) { folders = []; return; }
+  try {
+    const res  = await authFetch('/api/folders/');
+    const data = await res.json();
+    folders = data.folders || [];
+    await loadDocuments(); // re-render with folder info
+    updateScopePill();
+  } catch(e) {
+    console.warn('Could not load folders', e);
+  }
+}
+
+// ── Create/Rename Modal ─────────────────────────────────────
+
+function openCreateFolderModal() {
+  _folderModalMode = 'create';
+  _folderModalId   = null;
+  _folderColor     = FOLDER_COLORS[Math.floor(Math.random() * FOLDER_COLORS.length)];
+  document.getElementById('folder-modal-title').textContent = '📁 New Folder';
+  document.getElementById('folder-name-input').value = '';
+  renderColorPicker('folder-color-picker', _folderColor, c => { _folderColor = c; });
+  document.getElementById('folder-modal-overlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('folder-name-input').focus(), 100);
+}
+
+function openRenameFolderModal(id, name, color) {
+  _folderModalMode = 'rename';
+  _folderModalId   = id;
+  _folderColor     = color || '#6c63ff';
+  document.getElementById('folder-modal-title').textContent = '✏️ Rename Folder';
+  document.getElementById('folder-name-input').value = name;
+  renderColorPicker('folder-color-picker', _folderColor, c => { _folderColor = c; });
+  document.getElementById('folder-modal-overlay').style.display = 'flex';
+  setTimeout(() => document.getElementById('folder-name-input').focus(), 100);
+}
+
+function closeFolderModal() {
+  document.getElementById('folder-modal-overlay').style.display = 'none';
+}
+
+async function submitFolderModal() {
+  const name = document.getElementById('folder-name-input').value.trim();
+  if (!name) { showToast('error', 'Folder name cannot be empty.'); return; }
+
+  if (_folderModalMode === 'create') {
+    await createFolder(name, _folderColor);
+  } else {
+    await renameFolder(_folderModalId, name, _folderColor);
+  }
+  closeFolderModal();
+}
+
+async function createFolder(name, color) {
+  try {
+    const res  = await authFetch('/api/folders/', {
+      method : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ name, color }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast('error', data.error || 'Failed to create folder'); return; }
+    showToast('success', `Folder "${name}" created.`);
+    await loadFolders();
+  } catch(e) { showToast('error', 'Could not reach backend.'); }
+}
+
+async function renameFolder(id, name, color) {
+  try {
+    const res  = await authFetch(`/api/folders/${id}`, {
+      method : 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body   : JSON.stringify({ name, color }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showToast('error', data.error || 'Failed to rename folder'); return; }
+    showToast('success', `Folder renamed to "${name}".`);
+    await loadFolders();
+  } catch(e) { showToast('error', 'Could not reach backend.'); }
+}
+
+async function deleteFolder(id) {
+  const folder = folders.find(f => f.id === id);
+  if (!confirm(`Delete folder "${folder?.name || id}"? Documents will not be deleted.`)) return;
+  try {
+    const res = await authFetch(`/api/folders/${id}`, { method: 'DELETE' });
+    if (!res.ok) { showToast('error', 'Failed to delete folder'); return; }
+    // Remove from scope if selected
+    chatScopeFolderIds = chatScopeFolderIds.filter(fid => fid !== id);
+    showToast('success', 'Folder deleted.');
+    await loadFolders();
+    updateScopePill();
+  } catch(e) { showToast('error', 'Could not reach backend.'); }
+}
+
+// ── Move Document to Folder ─────────────────────────────────
+
+function openMoveDocModal(docId) {
+  _moveDocId      = docId;
+  _moveDocFolderId = null;
+  const listEl = document.getElementById('move-doc-folder-list');
+  listEl.innerHTML = [
+    { id: null, name: 'No folder (unorganised)', color: '#6b7280', doc_count: 0 },
+    ...folders
+  ].map(f => `
+    <label class="folder-check-item">
+      <input type="radio" name="move-folder-radio" value="${f.id ?? ''}"
+             onchange="_moveDocFolderId = ${f.id === null ? 'null' : f.id}">
+      <span class="fci-dot" style="background:${f.color}"></span>
+      <span class="fci-name">${escapeHtml(f.name)}</span>
+      <span class="fci-count">${f.doc_count ?? ''}</span>
+    </label>`).join('');
+  document.getElementById('move-doc-modal-overlay').style.display = 'flex';
+}
+
+function closeMoveDocModal() {
+  document.getElementById('move-doc-modal-overlay').style.display = 'none';
+}
+
+async function applyMoveDoc() {
+  if (_moveDocId == null) { closeMoveDocModal(); return; }
+  await moveDocToFolder(_moveDocId, _moveDocFolderId);
+  closeMoveDocModal();
+}
+
+async function moveDocToFolder(docId, folderId) {
+  try {
+    const res = await fetch(`${API}/api/documents/${docId}`, {
+      method : 'PATCH',
+      headers: {
+        'Content-Type' : 'application/json',
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {})
+      },
+      body: JSON.stringify({ folder_id: folderId }),
+    });
+    if (!res.ok) { showToast('error', 'Failed to move document'); return; }
+    const folder = folders.find(f => f.id === folderId);
+    showToast('success', `Moved to "${folder ? folder.name : 'Unorganised'}".`);
+    await loadDocuments();
+  } catch(e) { showToast('error', 'Could not reach backend.'); }
+}
+
+// ── Chat Scope Modal ───────────────────────────────────────
+
+function openScopeModal() {
+  const listEl = document.getElementById('scope-folder-list');
+  if (!folders.length) {
+    listEl.innerHTML = `<div style="font-size:13px;color:var(--text-muted);padding:12px 0">
+      No folders yet. Create one using the + Folder button.</div>`;
+  } else {
+    listEl.innerHTML = folders.map(f => `
+      <label class="folder-check-item">
+        <input type="checkbox" value="${f.id}"
+               ${chatScopeFolderIds.includes(f.id) ? 'checked' : ''}>
+        <span class="fci-dot" style="background:${f.color}"></span>
+        <span class="fci-name">${escapeHtml(f.name)}</span>
+        <span class="fci-count">${f.doc_count} doc${f.doc_count !== 1 ? 's' : ''}</span>
+      </label>`).join('');
+  }
+  document.getElementById('scope-modal-overlay').style.display = 'flex';
+}
+
+function closeScopeModal() {
+  document.getElementById('scope-modal-overlay').style.display = 'none';
+}
+
+function applyScope() {
+  const checks = document.querySelectorAll('#scope-folder-list input[type=checkbox]:checked');
+  chatScopeFolderIds = Array.from(checks).map(c => parseInt(c.value));
+  closeScopeModal();
+  updateScopePill();
+}
+
+function clearScope() {
+  chatScopeFolderIds = [];
+  updateScopePill();
+}
+
+function updateScopePill() {
+  const pill      = document.getElementById('scope-pill');
+  const pillLabel = document.getElementById('scope-pill-label');
+  const statusEl  = document.getElementById('scope-status');
+  const featBar   = document.getElementById('active-features');
+
+  if (chatScopeFolderIds.length === 0) {
+    pill && (pill.style.display = 'none');
+    if (statusEl) statusEl.textContent = 'All documents';
+    // hide active-features if no other pills visible
+    checkFeaturesBar();
+    return;
+  }
+
+  const names = chatScopeFolderIds.map(id => {
+    const f = folders.find(x => x.id === id);
+    return f ? f.name : `#${id}`;
+  });
+  const label = names.length > 2 ? `${names.slice(0,2).join(', ')} +${names.length-2}` : names.join(', ');
+
+  if (pillLabel) pillLabel.textContent = label;
+  if (pill) pill.style.display = '';
+  if (statusEl) statusEl.textContent = label;
+  if (featBar) featBar.style.display = '';
+}
+
+function checkFeaturesBar() {
+  const bar = document.getElementById('active-features');
+  if (!bar) return;
+  const anyVisible = Array.from(bar.querySelectorAll('.feature-pill'))
+    .some(el => el.style.display !== 'none');
+  bar.style.display = anyVisible ? '' : 'none';
+}
+
+// ── Quiz scope helpers ─────────────────────────────────────
+
+function setQuizScope(mode) {
+  _quizScope = mode;
+  document.getElementById('quiz-scope-all').classList.toggle('active', mode === 'all');
+  document.getElementById('quiz-scope-folders').classList.toggle('active', mode === 'folders');
+  document.getElementById('quiz-scope-chat').classList.toggle('active', mode === 'chat');
+
+  const picker = document.getElementById('quiz-folder-picker');
+  if (mode === 'folders') {
+    picker.style.display = '';
+    renderQuizFolderPicker();
+  } else {
+    picker.style.display = 'none';
+  }
+
+  const note = document.getElementById('quiz-scope-note');
+  if (mode === 'chat') {
+    if (chatScopeFolderIds.length === 0) {
+      note.textContent = 'Chat scope is currently "All documents".';
+    } else {
+      const names = chatScopeFolderIds.map(id => folders.find(f=>f.id===id)?.name || `#${id}`).join(', ');
+      note.textContent = `Will use chat scope: ${names}`;
+    }
+  } else {
+    note.textContent = '';
+  }
+}
+
+function renderQuizFolderPicker() {
+  const listEl = document.getElementById('quiz-folder-list');
+  if (!folders.length) {
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--text-muted)">No folders yet.</div>`;
+    return;
+  }
+  listEl.innerHTML = folders.map(f => `
+    <label class="folder-check-item">
+      <input type="checkbox" value="${f.id}"
+             ${_quizFolderIds.includes(f.id) ? 'checked' : ''}
+             onchange="toggleQuizFolder(${f.id}, this.checked)">
+      <span class="fci-dot" style="background:${f.color}"></span>
+      <span class="fci-name">${escapeHtml(f.name)}</span>
+      <span class="fci-count">${f.doc_count} doc${f.doc_count!==1?'s':''}</span>
+    </label>`).join('');
+}
+
+function toggleQuizFolder(id, checked) {
+  if (checked) { if (!_quizFolderIds.includes(id)) _quizFolderIds.push(id); }
+  else         { _quizFolderIds = _quizFolderIds.filter(x => x !== id); }
+}
+
+// Populate quiz folder picker whenever quiz modal opens
+const _origOpenQuizModal = window.openQuizModal;
+function openQuizModal() {
+  if (_origOpenQuizModal) _origOpenQuizModal();
+  else {
+    document.getElementById('quiz-modal-overlay').style.display = 'flex';
+  }
+  setQuizScope(_quizScope); // refresh state
+}
+window.openQuizModal = openQuizModal;
+
+// ── Colour picker helper ───────────────────────────────────
+
+function renderColorPicker(containerId, selected, onChange) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = FOLDER_COLORS.map(c => `
+    <div class="color-swatch ${c === selected ? 'selected' : ''}"
+         style="background:${c}"
+         onclick="pickColor('${containerId}', '${c}', pickColorCb_${containerId})"></div>
+  `).join('');
+  window[`pickColorCb_${containerId}`] = onChange;
+}
+
+function pickColor(containerId, color, cb) {
+  document.querySelectorAll(`#${containerId} .color-swatch`).forEach(s => {
+    s.classList.toggle('selected', s.style.background === color || s.style.backgroundColor === color);
+  });
+  if (cb) cb(color);
+}
+
+// Close modals on overlay click
+document.addEventListener('click', e => {
+  if (e.target.id === 'folder-modal-overlay') closeFolderModal();
+  if (e.target.id === 'scope-modal-overlay')  closeScopeModal();
+  if (e.target.id === 'move-doc-modal-overlay') closeMoveDocModal();
+});
+
+// Reload folders after login
+const _origRestoreSession = window.restoreSession;
+const _afterAuthHook = async () => { if (currentToken) await loadFolders(); };

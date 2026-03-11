@@ -14,15 +14,28 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Table: folders
+CREATE TABLE IF NOT EXISTS folders (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+    name       VARCHAR(255) NOT NULL,
+    color      VARCHAR(20) DEFAULT '#6c63ff',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for faster folder lookup by user
+CREATE INDEX IF NOT EXISTS idx_folders_user_id ON folders (user_id);
+
 -- Table: documents
 CREATE TABLE IF NOT EXISTS documents (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    filename VARCHAR(255) NOT NULL,
-    file_path VARCHAR(500) NOT NULL,
-    file_type VARCHAR(50), -- e.g., 'pdf', 'docx'
-    title TEXT,
-    subject TEXT[], -- Array of subjects, e.g., ['Math', 'Physics']
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    folder_id   INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+    filename    VARCHAR(255) NOT NULL,
+    file_path   VARCHAR(500) NOT NULL,
+    file_type   VARCHAR(50), -- e.g., 'pdf', 'docx'
+    title       TEXT,
+    subject     TEXT[], -- Array of subjects, e.g., ['Math', 'Physics']
     upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     chunk_count INTEGER DEFAULT 0
 );

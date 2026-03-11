@@ -42,6 +42,19 @@ def generate_quiz():                          # ← route function keeps the nam
         topic         = data.get('topic', '').strip()
         document_ids  = data.get('document_ids') or []
 
+        # ── Expand folder_ids → document_ids if provided ─────────
+        folder_ids = data.get('folder_ids') or []
+        if folder_ids:
+            from app.backend.models import Folder, Document as Doc
+            with get_db_session() as _db:
+                extra = [
+                    d.id for d in _db.query(Doc)
+                    .join(Folder, Doc.folder_id == Folder.id)
+                    .filter(Folder.id.in_(folder_ids))
+                    .all()
+                ]
+            document_ids = list(set(document_ids + extra))
+
         if difficulty not in ('easy', 'medium', 'hard'):
             return jsonify({'error': 'difficulty must be easy, medium, or hard'}), 400
         if question_type not in ('mcq', 'multi_select', 'mixed'):

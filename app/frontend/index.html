@@ -1,31 +1,21 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM RAG Learning Assistant</title>
-  <!-- Favicon -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
-  <!-- Markdown rendering libraries -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
-  <!-- KaTeX for LaTeX math rendering -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
-  <!-- Main Stylesheet (performance-optimized separate file) -->
-  <link rel="stylesheet" href="styles.css">
-  <!-- Mermaid – diagram rendering -->
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <!-- Desmos – graphing calculator -->
-  <!-- <script src="https://www.desmos.com/api/v1.9/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script> -->
+  <link rel="stylesheet" href="styles.css">
   <script defer src="app.js"></script>
 </head>
 <body>
 
-<!------------------------------------------------
-     LEFT SIDEBAR
--------------------------------------------------->
 <aside id="sidebar">
   <div class="sidebar-header">
     <span class="logo">🎓</span>
@@ -36,52 +26,44 @@
   </div>
 
   <button id="new-chat-btn" onclick="newChat()">&#43;&nbsp; New Chat</button>
-  
-  <button id="add-doc-btn" onclick="triggerSidebarUpload()">
-  📎&nbsp; Add document
-  </button>
-  <input
-    type="file"
-    id="sidebar-file-input"
-    accept=".pdf,.docx,.pptx,.txt"
-    style="display:none"
-    onchange="onSidebarFileSelected(event)"
-  >
 
+  <div class="sidebar-upload-row">
+    <button id="add-doc-btn" onclick="triggerSidebarUpload()">📎&nbsp; Add document</button>
+    <button class="icon-btn-folder" onclick="openCreateFolderModal()" title="New Folder">📁+</button>
+  </div>
+  <input type="file" id="sidebar-file-input" accept=".pdf,.docx,.pptx,.txt" style="display:none" onchange="onSidebarFileSelected(event)">
 
-  <div class="sidebar-section-title">Uploaded Documents</div>
-  <div id="docs-list">
+  <div class="scope-bar" id="scope-bar">
+    <span class="scope-label">💬 Scope:</span>
+    <span id="scope-status" class="scope-status">All documents</span>
+    <button class="scope-edit-btn" onclick="openScopeModal()" title="Change scope">✏️</button>
+  </div>
+
+  <div class="sidebar-section-title">
+    Folders &amp; Documents
+    <button class="mini-btn" onclick="openCreateFolderModal()">+ Folder</button>
+  </div>
+
+  <div id="docs-folders-list">
     <div style="font-size:12px; color:var(--text-muted); padding:8px 4px">No documents yet</div>
   </div>
-  <div class="sidebar-section-title">Link Sources</div>
 
+  <div class="sidebar-section-title">Link Sources</div>
   <div class="link-add-row">
-    <input id="link-input" type="text" 
-           placeholder="Paste a trusted https:// link…" 
-           title="Trusted domains: Wikipedia, MDN, Stack Overflow, GitHub, arXiv, Python Docs, Google Cloud, AWS, OpenAI, GeeksforGeeks, PyPI, Medium, Zhihu, CSDN, Baidu, Jianshu" />
+    <input id="link-input" type="text" placeholder="Paste a trusted https:// link…" title="Trusted domains: Wikipedia, MDN, Stack Overflow, GitHub, arXiv, Python Docs, Google Cloud, AWS, OpenAI, GeeksforGeeks, PyPI, Medium, Zhihu, CSDN, Baidu, Jianshu" />
     <button id="add-link-btn" onclick="addLink()">Add</button>
   </div>
-  <div style="font-size:10px; color:var(--text-muted); padding:2px 8px; margin-top:-4px">
-    ℹ️ Only trusted domains accepted (hover input for list)
-  </div>
-
+  <div style="font-size:10px; color:var(--text-muted); padding:2px 8px; margin-top:-4px">ℹ️ Only trusted domains accepted</div>
   <div id="link-list" class="link-list"></div>
+  <button id="ingest-links-btn" onclick="ingestLinks()">Ingest Links</button>
 
-<button id="ingest-links-btn" onclick="ingestLinks()">Ingest Links</button>
-  <div class="sidebar-footer">
-    Backend&nbsp;<span id="api-url">localhost:5000</span>
-  </div>
+  <div class="sidebar-footer">Backend&nbsp;<span id="api-url">localhost:5000</span></div>
 </aside>
 
-<!-- -----------------------------------------------
-     CENTER MAIN
------------------------------------------------- -->
 <main id="main">
-  <!-- Top bar -->
   <div id="topbar">
     <h1>Chat</h1>
     <div class="topbar-right">
-      <!-- Auth button — shows Login or username -->
       <button id="auth-btn" onclick="openAuthModal()">
         <span id="auth-btn-icon">🔑</span>
         <span id="auth-btn-label">Login</span>
@@ -89,85 +71,74 @@
     </div>
   </div>
 
-  <!-- Chat window -->
   <div id="chat-window">
     <div id="welcome">
       <div class="welcome-icon">💬</div>
       <h2>Ask your documents anything</h2>
-      <p>Upload a file using the button in the input box, then ask a question.
-         The RAG pipeline will retrieve the most relevant chunks and generate an answer.</p>
+      <p>Upload files, organise them into folders, then ask questions. The RAG pipeline retrieves the most relevant chunks and generates an answer.</p>
     </div>
   </div>
 
-  <!-- Input area -->
   <div id="input-area">
-  <div id="input-box">
-    <!-- Active feature pills (shown when web search / quiz is on) -->
-    <div id="active-features" style="display:none;">
-      <span id="web-pill" class="feature-pill" style="display:none;">
-        🌐 Web Search <button onclick="toggleWebSearch()" title="Remove">✕</button>
-      </span>
-      <span id="diagram-pill" class="feature-pill" style="display:none;">
-        🔀 Diagram <button onclick="selectDiagram()" title="Remove">✕</button>
-      </span>
-    </div>
-
-    <div class="input-row">
-      <!-- + Add button -->
-      <div class="add-btn-wrap">
-        <button id="add-btn" class="icon-btn add-btn" onclick="toggleAddMenu()" title="Add feature">＋</button>
-        <!-- Dropdown -->
-        <div id="add-menu" class="add-menu" style="display:none;">
-          <button class="add-menu-item" id="web-menu-item" onclick="selectWebSearch()">
-            <span class="add-menu-icon">🌐</span>
-            <span class="add-menu-text">
-              <strong>Web Search</strong>
-              <small>Search trusted sources</small>
-            </span>
-            <span id="web-check" class="add-menu-check" style="display:none;">✓</span>
-          </button>
-          <div class="add-menu-divider"></div>
-          <button class="add-menu-item" onclick="selectQuiz()">
-            <span class="add-menu-icon">🧠</span>
-            <span class="add-menu-text">
-              <strong>Generate Quiz</strong>
-              <small>Create questions from your docs</small>
-            </span>
-          </button>
-          <div class="add-menu-divider"></div>
-          <button class="add-menu-item" id="diagram-menu-item" onclick="selectDiagram()">
-            <span class="add-menu-icon">🔀</span>
-            <span class="add-menu-text">
-              <strong>Generate Diagram</strong>
-              <small>Visualize as flowchart or UML</small>
-            </span>
-            <span id="diagram-check" class="add-menu-check" style="display:none;">✓</span>
-          </button>
-        </div>
+    <div id="input-box">
+      <div id="active-features" style="display:none;">
+        <span id="web-pill" class="feature-pill" style="display:none;">
+          🌐 Web Search <button onclick="toggleWebSearch()" title="Remove">✕</button>
+        </span>
+        <span id="diagram-pill" class="feature-pill" style="display:none;">
+          🔀 Diagram <button onclick="selectDiagram()" title="Remove">✕</button>
+        </span>
+        <span id="scope-pill" class="feature-pill scope-pill" style="display:none;">
+          📁 <span id="scope-pill-label">Scoped</span>
+          <button onclick="openScopeModal()" title="Edit scope">✏️</button>
+          <button onclick="clearScope()" title="Remove scope">✕</button>
+        </span>
       </div>
 
-      <textarea id="query-input" rows="1"
-        placeholder="Ask a question about your documents..."
-        onkeydown="handleKey(event)"
-        oninput="autoResize(this)"></textarea>
-      <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
+      <div class="input-row">
+        <div class="add-btn-wrap">
+          <button id="add-btn" class="icon-btn add-btn" onclick="toggleAddMenu()" title="Add feature">＋</button>
+          <div id="add-menu" class="add-menu" style="display:none;">
+            <button class="add-menu-item" id="web-menu-item" onclick="selectWebSearch()">
+              <span class="add-menu-icon">🌐</span>
+              <span class="add-menu-text"><strong>Web Search</strong><small>Search trusted sources</small></span>
+              <span id="web-check" class="add-menu-check" style="display:none;">✓</span>
+            </button>
+            <div class="add-menu-divider"></div>
+            <button class="add-menu-item" onclick="selectQuiz()">
+              <span class="add-menu-icon">🧠</span>
+              <span class="add-menu-text"><strong>Generate Quiz</strong><small>Create questions from your docs</small></span>
+            </button>
+            <div class="add-menu-divider"></div>
+            <button class="add-menu-item" id="diagram-menu-item" onclick="selectDiagram()">
+              <span class="add-menu-icon">🔀</span>
+              <span class="add-menu-text"><strong>Generate Diagram</strong><small>Visualize as flowchart or UML</small></span>
+              <span id="diagram-check" class="add-menu-check" style="display:none;">✓</span>
+            </button>
+            <div class="add-menu-divider"></div>
+            <button class="add-menu-item" onclick="openScopeModal(); document.getElementById('add-menu').style.display='none'">
+              <span class="add-menu-icon">📁</span>
+              <span class="add-menu-text"><strong>Select Folders</strong><small>Scope chat to specific folders</small></span>
+            </button>
+          </div>
+        </div>
+
+        <textarea id="query-input" rows="1"
+          placeholder="Ask a question about your documents..."
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"></textarea>
+        <button id="send-btn" onclick="sendQuery()" title="Send">➤</button>
+      </div>
     </div>
+    <div class="input-hint">Enter to send · Shift+Enter for new line · Use sidebar to upload documents</div>
   </div>
-  <div class="input-hint">Enter to send &nbsp;·&nbsp; Shift+Enter for new line &nbsp;·&nbsp; Use sidebar to upload documents</div>
-</div>
 </main>
 
-<!-- -----------------------------------------------
-     RIGHT PANEL â€” Sources & Sessions
------------------------------------------------- -->
 <aside id="right-panel">
-  <!-- Tab bar -->
   <div class="right-tab-bar">
     <div class="right-tab active" onclick="switchRightTab('sources', this)">Sources</div>
     <div class="right-tab"        onclick="switchRightTab('history', this)">History</div>
   </div>
-
-  <!-- Sources tab -->
   <div id="tab-sources" class="right-tab-panel active">
     <div id="sources-empty" class="sources-empty">
       <div style="font-size:28px; margin-bottom:8px">📄</div>
@@ -175,8 +146,6 @@
     </div>
     <div id="sources-list"></div>
   </div>
-
-  <!-- History tab -->
   <div id="tab-history" class="right-tab-panel">
     <div id="session-list">
       <div style="font-size:12px; color:var(--text-muted); text-align:center; padding:20px 8px">
@@ -187,10 +156,7 @@
 </aside>
 
 
-
-<!-- -----------------------------------------------
-     AUTH MODAL
------------------------------------------------- -->
+<!-- AUTH MODAL -->
 <div id="modal-overlay">
   <div id="auth-modal">
     <div class="modal-header">
@@ -220,31 +186,25 @@
 <!-- DOCUMENT PREVIEW MODAL -->
 <div id="doc-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:400; align-items:center; justify-content:center;">
   <div style="width:min(900px,92vw); height:min(80vh,700px); background:var(--bg-sidebar); border:1px solid var(--border); border-radius:14px; overflow:hidden; display:flex; flex-direction:column;">
-    
     <div style="padding:12px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between;">
       <div id="doc-modal-title" style="font-weight:600; font-size:13px; color:var(--text-primary);"></div>
       <button class="icon-btn" onclick="closeDocModal()">✕</button>
     </div>
-
-    <div id="doc-modal-body" style="padding:14px; overflow:auto; color:var(--text-primary); font-size:13px; line-height:1.6;">
-      Loading…
-    </div>
-
+    <div id="doc-modal-body" style="padding:14px; overflow:auto; color:var(--text-primary); font-size:13px; line-height:1.6;">Loading…</div>
   </div>
 </div>
-<!-- ── Quiz Config Modal ─────────────────────────── -->
+
+<!-- Quiz Config Modal -->
 <div id="quiz-modal-overlay">
   <div id="quiz-modal">
     <div class="modal-header">
       <h2>🧠 Generate Quiz</h2>
       <button id="quiz-modal-close" onclick="closeQuizModal()">✕</button>
     </div>
-
     <div class="quiz-form">
       <label>Number of Questions
         <input id="quiz-num" type="number" min="1" max="20" value="5" />
       </label>
-
       <label>Difficulty
         <select id="quiz-difficulty">
           <option value="easy">Easy — direct recall</option>
@@ -252,7 +212,6 @@
           <option value="hard">Hard — analysis &amp; application</option>
         </select>
       </label>
-
       <label>Question Type
         <select id="quiz-type">
           <option value="mcq" selected>MCQ — single correct answer</option>
@@ -260,20 +219,28 @@
           <option value="mixed">Mixed</option>
         </select>
       </label>
-
       <label>Topic / Focus <span class="label-hint">(optional)</span>
         <input id="quiz-topic" type="text" placeholder="e.g. neural networks, osmosis, World War II…" />
       </label>
-
+      <label>Source Scope
+        <div class="quiz-scope-selector">
+          <button class="scope-option active" id="quiz-scope-all"     onclick="setQuizScope('all')">📚 All Docs</button>
+          <button class="scope-option"        id="quiz-scope-folders" onclick="setQuizScope('folders')">📁 Folders</button>
+          <button class="scope-option"        id="quiz-scope-chat"    onclick="setQuizScope('chat')">💬 Chat Scope</button>
+        </div>
+      </label>
+      <div id="quiz-folder-picker" style="display:none;">
+        <div class="folder-picker-label">Select folders for quiz:</div>
+        <div id="quiz-folder-list" class="folder-check-list"></div>
+      </div>
       <p id="quiz-scope-note" class="quiz-scope-note"></p>
     </div>
-
     <p id="quiz-error" class="quiz-error"></p>
     <button id="quiz-generate-btn" onclick="generateQuiz()">Generate Quiz</button>
   </div>
 </div>
 
-<!-- ── Quiz View ──────────────────────────────────── -->
+<!-- Quiz View -->
 <div id="quiz-view" style="display:none;">
   <div id="quiz-header">
     <div id="quiz-title-bar">
@@ -293,8 +260,66 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════
-     SCRIPTS  - Performance-optimized separate files
-════════════════════════════════════════════════ -->
+<!-- Create / Rename Folder Modal -->
+<div id="folder-modal-overlay" class="modal-overlay-generic" style="display:none;">
+  <div class="generic-modal">
+    <div class="modal-header">
+      <h2 id="folder-modal-title">📁 New Folder</h2>
+      <button onclick="closeFolderModal()">✕</button>
+    </div>
+    <div style="padding:16px;">
+      <label style="display:block; margin-bottom:8px; font-size:13px; color:var(--text-secondary);">Folder name</label>
+      <input id="folder-name-input" type="text" placeholder="e.g. Lecture Notes, Week 1…"
+             style="width:100%; box-sizing:border-box;"
+             onkeydown="if(event.key==='Enter') submitFolderModal()">
+      <div style="margin-top:14px;">
+        <label style="font-size:13px; color:var(--text-secondary); display:block; margin-bottom:6px;">Colour</label>
+        <div id="folder-color-picker" class="color-picker-row"></div>
+      </div>
+    </div>
+    <div style="padding:0 16px 16px; display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn-secondary" onclick="closeFolderModal()">Cancel</button>
+      <button class="btn-primary"   onclick="submitFolderModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chat Scope Modal -->
+<div id="scope-modal-overlay" class="modal-overlay-generic" style="display:none;">
+  <div class="generic-modal scope-modal">
+    <div class="modal-header">
+      <h2>📁 Chat Scope</h2>
+      <button onclick="closeScopeModal()">✕</button>
+    </div>
+    <div style="padding:14px 16px;">
+      <p style="font-size:13px; color:var(--text-secondary); margin:0 0 12px;">
+        Choose which folders the conversation will refer to. Leave all unchecked to use all documents.
+      </p>
+      <div id="scope-folder-list" class="folder-check-list"></div>
+    </div>
+    <div style="padding:0 16px 16px; display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn-secondary" onclick="clearScope(); closeScopeModal()">Use All Docs</button>
+      <button class="btn-primary"   onclick="applyScope()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move Document Modal -->
+<div id="move-doc-modal-overlay" class="modal-overlay-generic" style="display:none;">
+  <div class="generic-modal">
+    <div class="modal-header">
+      <h2>📂 Move to Folder</h2>
+      <button onclick="closeMoveDocModal()">✕</button>
+    </div>
+    <div style="padding:14px 16px;">
+      <div id="move-doc-folder-list" class="folder-check-list radio-list"></div>
+    </div>
+    <div style="padding:0 16px 16px; display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn-secondary" onclick="closeMoveDocModal()">Cancel</button>
+      <button class="btn-primary"   onclick="applyMoveDoc()">Move</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

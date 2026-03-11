@@ -62,6 +62,19 @@ def ask_question():
         session_id = data.get('session_id')
         document_ids = data.get('document_ids')
 
+        # ── Expand folder_ids → document_ids if provided ─────────
+        folder_ids = data.get('folder_ids')
+        if folder_ids:
+            from app.backend.models import Folder
+            with get_db_session() as _db:
+                extra_ids = [
+                    d.id for d in _db.query(__import__('app.backend.models', fromlist=['Document']).Document)
+                    .join(Folder, __import__('app.backend.models', fromlist=['Document']).Document.folder_id == Folder.id)
+                    .filter(Folder.id.in_(folder_ids))
+                    .all()
+                ]
+            document_ids = list(set((document_ids or []) + extra_ids))
+
         # NEW: web toggle + explicit ask detection (only triggers web lane)
         web_toggle = bool(data.get('web_search', False))
         web_explicit = web_retrieval.user_explicitly_requested_web(question)

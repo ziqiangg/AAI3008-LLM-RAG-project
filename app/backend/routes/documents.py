@@ -44,6 +44,7 @@ def upload_document():
 
     subject = request.form.get("subject", "General")
     user_id = request.form.get("user_id", type=int)
+    folder_id = request.form.get("folder_id", type=int)  # optional folder
 
     # Save file to disk
     filename = secure_filename(file.filename)
@@ -61,7 +62,10 @@ def upload_document():
                 user_id=user_id,
                 subject=subject,
             )
-            # run_ingestion_pipeline commits internally; we just return the doc
+            # Assign folder if provided
+            if folder_id:
+                doc.folder_id = folder_id
+                session.commit()
             return jsonify({
                 "message": "Document uploaded and ingested successfully.",
                 "document": doc.to_dict(),
@@ -168,6 +172,9 @@ def update_document(doc_id: int):
             
             doc.subject = new_subject
             current_app.logger.info(f"Updated document {doc_id} subjects to: {new_subject}")
+
+        if 'folder_id' in data:
+            doc.folder_id = data['folder_id']  # can be None (unassign) or int
         
         return jsonify({
             "message": "Document updated successfully",
