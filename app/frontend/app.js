@@ -9,11 +9,7 @@ mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose
 let webSearchEnabled = false;
 let diagramEnabled = false;
 
-<<<<<<< Updated upstream
 // ── State ─────────────────────────────────────
-=======
-// App state
->>>>>>> Stashed changes
 let messages       = [];
 let msgCounter     = 0;
 let authMode       = 'login';   // 'login' | 'register'
@@ -23,355 +19,12 @@ let currentSession = null;      // active session id
 let toastTimeout   = null;      // toast notification timer
 let stageTimer     = null;      // loading stage progress timer
 
-<<<<<<< Updated upstream
 // ── Bootstrap ─────────────────────────────────
-=======
-// Folder state
-let folders          = [];
-let scopedFolderIds  = [];
-let folderModalMode  = 'create';
-let folderModalId    = null;
-let folderDeleteId   = null;
-let folderDeleteName = '';
-let collapsedFolders = new Set();
-
-let activeSource = null;
-
-const SUBJECT_COLORS = {
-  'Math': '#3b82f6', 'Computer Science': '#10b981',
-  'Artificial Intelligence': '#8b5cf6', 'Physics': '#ef4444',
-  'Chemistry': '#f59e0b', 'Biology': '#14b8a6',
-  'Language Learning': '#ec4899', 'Geography': '#84cc16',
-  'Economics': '#06b6d4', 'Social Studies': '#f97316',
-  'Computer Systems': '#6366f1', 'General': '#6b7280'
-};
-
-const VALID_SUBJECTS = [
-  'Math', 'Computer Science', 'Artificial Intelligence', 'Physics',
-  'Chemistry', 'Biology', 'Language Learning', 'Geography',
-  'Economics', 'Social Studies', 'Computer Systems', 'General'
-];
-
-window._docsById = {};
-window._docIdByFilename = {};
-window._uploadedDocSources = [];
-let hasActiveQuerySources = false;
-
-let pendingUploads = [];
-let pendingUploadCounter = 0;
-const pendingUploadTimers = new Map();
-const pendingUploadTrackers = new Map();
-let isLoadingDocuments = false;
-let documentsAutoRefreshTimer = null;
-let documentsReloadRequested = false;
-let documentsRefreshDelayMs = 3000;
-let lastServerDocuments = [];
-
-function isActiveUploadStatus(status) {
-  const normalized = String(status || '').toLowerCase();
-  return normalized === 'queued' || normalized === 'processing';
-}
-
-function stopPendingUploadTimer(pendingId) {
-  const timer = pendingUploadTimers.get(pendingId);
-  if (timer) {
-    clearInterval(timer);
-    pendingUploadTimers.delete(pendingId);
-  }
-}
-
-function stopPendingUploadTracking(pendingId) {
-  const tracker = pendingUploadTrackers.get(pendingId);
-  if (!tracker) return;
-  if (tracker.timeoutId) clearTimeout(tracker.timeoutId);
-  tracker.stopped = true;
-  pendingUploadTrackers.delete(pendingId);
-}
-
-function createPendingUpload(file, folderId) {
-  const pendingId = `pending-${Date.now()}-${++pendingUploadCounter}`;
-  const ext = (file.name.includes('.') ? file.name.split('.').pop() : '').toLowerCase();
-  const pendingDoc = {
-    id: null,
-    pending_id: pendingId,
-    user_id: currentUser ? currentUser.id : null,
-    folder_id: folderId ?? null,
-    filename: file.name,
-    file_path: null,
-    file_type: ext || null,
-    title: null,
-    subject: [],
-    upload_date: new Date().toISOString(),
-    chunk_count: 0,
-    is_pending: true,
-    is_file_only: false,
-    status: 'processing',
-    progress: 5,
-    status_message: 'Uploading...',
-    status_origin: 'local',
-  };
-
-  pendingUploads.push(pendingDoc);
-  refreshDocumentsTreeFromState();
-  const timer = setInterval(() => {
-    const target = pendingUploads.find(d => d.pending_id === pendingId);
-    if (!target) {
-      clearInterval(timer);
-      pendingUploadTimers.delete(pendingId);
-      return;
-    }
-    if (target.status_origin === 'server' || !isActiveUploadStatus(target.status)) {
-      return;
-    }
-    const next = Math.min(90, (target.progress || 0) + Math.floor(Math.random() * 6) + 2);
-    target.progress = next;
-    updatePendingUploadRow(pendingId, next, target.status_message);
-  }, 700);
-  pendingUploadTimers.set(pendingId, timer);
-
-  return pendingId;
-}
-
-function applyServerDocumentToPending(pendingId, serverDoc = {}) {
-  const status = String(serverDoc.status || '').toLowerCase();
-  const isFailed = status === 'failed';
-  const isIndexed = status === 'indexed' || (!!serverDoc.id && !serverDoc.is_pending && !serverDoc.is_file_only && !isFailed);
-  const nextProgress = serverDoc.progress ?? ((isIndexed || isFailed) ? 100 : 12);
-
-  return updatePendingUpload(pendingId, {
-    ...serverDoc,
-    pending_id: pendingId,
-    is_pending: !isIndexed && !isFailed,
-    is_file_only: !isIndexed,
-    status: serverDoc.status || (isFailed ? 'failed' : (isIndexed ? 'indexed' : 'queued')),
-    status_message: serverDoc.status_message || (isFailed
-      ? (serverDoc.error_message || 'Processing failed')
-      : (isIndexed ? 'Indexed and ready' : 'Queued for processing')),
-    progress: nextProgress,
-    status_origin: 'server',
-  });
-}
-
-async function checkPendingUploadStatus(pendingId, fallbackFilename) {
-  const tracker = pendingUploadTrackers.get(pendingId);
-  if (!tracker || tracker.stopped) return;
-
-  const target = pendingUploads.find(d => d.pending_id === pendingId);
-  const filename = (target && target.filename) || fallbackFilename;
-  if (!filename) {
-    stopPendingUploadTracking(pendingId);
-    return;
-  }
-
-  try {
-    const params = new URLSearchParams({ _: String(Date.now()) });
-    if (currentUser && currentUser.id != null) params.set('user_id', String(currentUser.id));
-    const res = await fetch(`${API}/api/documents/status/${encodeURIComponent(filename)}?${params.toString()}`, { cache: 'no-store' });
-
-    if (res.status === 404) {
-      schedulePendingUploadStatusCheck(pendingId, filename, 1200);
-      return;
-    }
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      schedulePendingUploadStatusCheck(pendingId, filename, 1200);
-      return;
-    }
-
-    const serverDoc = data.document || {};
-    const updated = applyServerDocumentToPending(pendingId, serverDoc);
-    if (updated) updatePendingUploadRow(pendingId, updated.progress, updated.status_message);
-
-    const status = String(serverDoc.status || '').toLowerCase();
-    if (status === 'failed') {
-      stopPendingUploadTracking(pendingId);
-      showToast('Upload failed', serverDoc.error_message || serverDoc.status_message || 'Could not process this file.', 'error');
-      return;
-    }
-
-    if (status === 'indexed' || (updated && updated.id != null && !updated.is_pending)) {
-      stopPendingUploadTracking(pendingId);
-      await loadDocuments();
-      clearPendingUpload(pendingId);
-      showToast('Upload complete', 'Document was classified and is ready to use.', 'success');
-      return;
-    }
-  } catch (e) {
-    console.warn('Could not refresh document status', e);
-  }
-
-  schedulePendingUploadStatusCheck(pendingId, filename, 1200);
-}
-
-function schedulePendingUploadStatusCheck(pendingId, filename, delayMs = 1200) {
-  const tracker = pendingUploadTrackers.get(pendingId);
-  if (!tracker || tracker.stopped) return;
-  if (tracker.timeoutId) clearTimeout(tracker.timeoutId);
-  tracker.timeoutId = setTimeout(() => checkPendingUploadStatus(pendingId, filename), delayMs);
-}
-
-function startPendingUploadTracking(pendingId, filename) {
-  stopPendingUploadTracking(pendingId);
-  pendingUploadTrackers.set(pendingId, { stopped: false, timeoutId: null });
-  checkPendingUploadStatus(pendingId, filename);
-}
-
-function updatePendingUpload(pendingId, changes = {}) {
-  const target = pendingUploads.find(d => d.pending_id === pendingId);
-  if (!target) return null;
-  Object.assign(target, changes || {});
-  if (target.status_origin === 'server' || !isActiveUploadStatus(target.status)) {
-    stopPendingUploadTimer(pendingId);
-  }
-  refreshDocumentsTreeFromState();
-  return target;
-}
-
-function clearPendingUpload(pendingId) {
-  stopPendingUploadTimer(pendingId);
-  stopPendingUploadTracking(pendingId);
-  pendingUploads = pendingUploads.filter(d => d.pending_id !== pendingId);
-  refreshDocumentsTreeFromState();
-}
-
-function updatePendingUploadRow(pendingId, progress, statusMessage) {
-  const row = document.querySelector(`.doc-item[data-pending-id="${pendingId}"]`);
-  if (!row) return;
-  const pct = Math.max(1, Math.min(99, Math.round(progress || 0)));
-  const status = row.querySelector('.doc-status-line');
-  if (status) status.textContent = statusMessage || `Processing ${pct}%`;
-  const bar = row.querySelector('.doc-inline-progress span');
-  if (bar) bar.style.width = `${pct}%`;
-  const progressValue = row.querySelector('.doc-progress-value');
-  if (progressValue) progressValue.textContent = `${pct}%`;
-  const chip = row.querySelector('.doc-state-chip.pending');
-  if (chip) chip.textContent = `${pct}%`;
-}
-function setDocumentsRefreshDelay(nextDelayMs) {
-  const safeDelay = Math.max(1000, Number(nextDelayMs) || 3000);
-  if (documentsRefreshDelayMs === safeDelay && documentsAutoRefreshTimer) return;
-  documentsRefreshDelayMs = safeDelay;
-  if (documentsAutoRefreshTimer) {
-    clearInterval(documentsAutoRefreshTimer);
-    documentsAutoRefreshTimer = null;
-  }
-  startDocumentsAutoRefresh();
-}
-
-function startDocumentsAutoRefresh() {
-  if (documentsAutoRefreshTimer) return;
-  documentsAutoRefreshTimer = setInterval(() => {
-    if (document.hidden) return;
-    loadDocuments();
-  }, documentsRefreshDelayMs);
-}
-
-function getVisibleDocuments(serverDocs = lastServerDocuments) {
-  const localPendingFilenames = new Set(
-    pendingUploads
-      .filter(d => d && d.pending_id && d.filename)
-      .map(d => d.filename)
-  );
-  const docs = Array.isArray(serverDocs)
-    ? serverDocs
-      .filter(doc => !(doc && localPendingFilenames.has(doc.filename) && (doc.status || 'indexed') !== 'indexed'))
-      .map(doc => ({ ...doc }))
-    : [];
-  const serverFilenames = new Set(docs.map(d => d && d.filename).filter(Boolean));
-  const seenPendingIds = new Set();
-  const localPendingDocs = pendingUploads.filter(d => {
-    if (!d || !d.pending_id) return false;
-    if (seenPendingIds.has(d.pending_id)) return false;
-    seenPendingIds.add(d.pending_id);
-    return !serverFilenames.has(d.filename);
-  }).map(d => ({ ...d }));
-  return [...docs, ...localPendingDocs];
-}
-
-function renderDocumentsTree(docs = getVisibleDocuments()) {
-  const tree = document.getElementById('docs-tree');
-  if (!tree) return;
-
-  window._docsById = {};
-  window._docIdByFilename = {};
-  (docs || []).forEach(d => {
-    if (d && d.id != null && (d.status || 'indexed') === 'indexed') {
-      window._docsById[d.id] = d;
-      if (d.filename) window._docIdByFilename[d.filename] = d.id;
-    }
-  });
-  window._uploadedDocSources = buildDocumentSourceEntries(
-    (docs || []).filter(d => d && d.id != null && (d.status || 'indexed') === 'indexed')
-  );
-  syncSourcesWithUploadedDocs();
-
-  if (!docs.length && !folders.length) {
-    tree.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">${currentUser ? 'No documents yet. Upload or paste a link.' : 'Log in to manage documents.'}</div>`;
-    return;
-  }
-
-  const byFolder = {};
-  const unfiled = [];
-  (docs || []).forEach(d => {
-    if (d.folder_id) {
-      if (!byFolder[d.folder_id]) byFolder[d.folder_id] = [];
-      byFolder[d.folder_id].push(d);
-    } else {
-      unfiled.push(d);
-    }
-  });
-
-  let html = '';
-
-  folders.forEach(f => {
-    const fDocs = byFolder[f.id] || [];
-    const isCollapsed = collapsedFolders.has(f.id);
-    const safeFolderName = String(f.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    html += `<div class="folder-group">
-      <div class="folder-header" onclick="toggleFolder(${f.id})">
-        <span class="folder-arrow ${isCollapsed ? '' : 'open'}" aria-hidden="true">&#8250;</span>
-        <span class="folder-icon" aria-hidden="true">&#128193;</span>
-        <span class="folder-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
-        <span class="folder-count">${fDocs.length}</span>
-        <span class="folder-actions" onclick="event.stopPropagation()">
-          <button class="folder-action-btn add" onclick="event.stopPropagation(); uploadToFolder(${f.id})" title="Upload into this folder" aria-label="Upload into this folder">
-            <span aria-hidden="true">&#43;</span>
-          </button>
-          <button class="folder-action-btn rename" onclick="event.stopPropagation(); openRenameFolderModal(${f.id}, '${safeFolderName}')" title="Rename folder" aria-label="Rename folder">
-            <span aria-hidden="true">&#9998;</span>
-          </button>
-          <button class="folder-action-btn danger" onclick="event.stopPropagation(); deleteFolder(${f.id}, '${safeFolderName}')" title="Delete folder" aria-label="Delete folder">
-            <span aria-hidden="true">&#128465;</span>
-          </button>
-        </span>
-      </div>
-      <div class="folder-docs ${isCollapsed ? 'collapsed' : ''}" id="folder-docs-${f.id}" style="max-height:${isCollapsed ? '0' : '999px'}">
-        ${fDocs.length === 0 ? '<div class="folder-empty-text">This folder is empty. Use the plus button to upload here.</div>' : ''}
-        ${fDocs.map(d => renderDocItem(d)).join('')}
-      </div>
-    </div>`;
-  });
-
-  if (unfiled.length > 0) {
-    html += `<div class="unfiled-header">Unfiled</div>`;
-    html += unfiled.map(d => renderDocItem(d)).join('');
-  }
-
-  tree.innerHTML = html || '<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>';
-}
-function refreshDocumentsTreeFromState() {
-  renderDocumentsTree(getVisibleDocuments());
-}
-
-// Bootstrap state
->>>>>>> Stashed changes
 window.addEventListener('load', () => {
   loadDocuments();
   if (currentToken) restoreSession();
 });
 
-<<<<<<< Updated upstream
 // ══════════════════════════════════════════════
 // HEALTH CHECK (Optional - removed from bootstrap)
 // ══════════════════════════════════════════════
@@ -448,11 +101,6 @@ function setActiveSource(i) {
 // ══════════════════════════════════════════════
 // AUTH
 // ══════════════════════════════════════════════
-=======
-// Authentication
-// AUTH
-// Authentication helpers
->>>>>>> Stashed changes
 function openAuthModal() {
   if (currentUser) { showUserMenu(); return; }
   document.getElementById('modal-overlay').classList.add('visible');
@@ -490,12 +138,8 @@ async function submitAuth() {
   if (!email || !password) { errEl.textContent = 'Please fill in all fields.'; return; }
 
   btn.disabled = true;
-<<<<<<< Updated upstream
   btn.textContent = authMode === 'login' ? 'Logging in…' : 'Registering…';
 
-=======
-  btn.textContent = authMode === 'login' ? 'Logging in...' : 'Registering...';
->>>>>>> Stashed changes
   try {
     const body  = authMode === 'login'
       ? { email, password }
@@ -513,7 +157,6 @@ async function submitAuth() {
     currentToken = data.token;
     currentUser  = data.user;
     localStorage.setItem('rag_token', currentToken);
-<<<<<<< Updated upstream
     
     // Always clear fields after request is sent
     email.value = '';
@@ -530,12 +173,6 @@ async function submitAuth() {
     btn.disabled = false;
     btn.textContent = authMode === 'login' ? 'Login' : 'Register';
   }
-=======
-    closeAuthModal(); updateAuthButton(); loadSessions(); loadDocuments();
-    showToast('Welcome', `Welcome, ${currentUser.username}!`, 'success');
-  } catch { errEl.textContent = 'Could not reach the backend.'; }
-  finally { btn.disabled = false; btn.textContent = authMode === 'login' ? 'Login' : 'Register'; }
->>>>>>> Stashed changes
 }
 
 async function restoreSession() {
@@ -582,14 +219,10 @@ function updateAuthButton() {
     // Show first letter avatar
     icon.innerHTML = `<span class="auth-avatar">${currentUser.username[0].toUpperCase()}</span>`;
     label.textContent = currentUser.username;
-<<<<<<< Updated upstream
   } else {
     icon.textContent  = '🔑';
     label.textContent = 'Login';
   }
-=======
-  } else { icon.textContent = 'U'; label.textContent = 'Login'; }
->>>>>>> Stashed changes
 }
 
 function showUserMenu() {
@@ -606,7 +239,6 @@ function showUserMenu() {
   dropdown.style.top  = (rect.bottom + window.scrollY + 8) + 'px';
   dropdown.style.right = (window.innerWidth - rect.right) + 'px';
   dropdown.innerHTML = `
-<<<<<<< Updated upstream
     <button class="user-dropdown-item" onclick="confirmLogout()">🚪 Logout</button>
     <div class="user-dropdown-divider"></div>
     <button class="user-dropdown-item danger" onclick="confirmDeleteAccount()">🗑️ Delete Account</button>
@@ -620,15 +252,6 @@ function showUserMenu() {
 function closeUserDropdown() {
   const d = document.getElementById('user-dropdown');
   if (d) d.remove();
-=======
-    <button class="user-dropdown-item" onclick="confirmLogout()">Log out</button>
-    <div class="user-dropdown-divider"></div>
-    <button class="user-dropdown-item danger" onclick="confirmDeleteAccount()">Delete account</button>
-  `;
-  setTimeout(() => document.addEventListener('click', () => {
-    const d = document.getElementById('user-dropdown'); if (d) d.remove();
-  }, { once: true }), 0);
->>>>>>> Stashed changes
 }
 
 function confirmLogout() {
@@ -645,7 +268,6 @@ async function confirmDeleteAccount() {
 
   try {
     const res = await authFetch('/api/users/me', { method: 'DELETE' });
-<<<<<<< Updated upstream
     if (res.ok) {
       showToast('🗑️', 'Account deleted. Goodbye!', 'success');
       setTimeout(() => logout(), 1200);
@@ -656,11 +278,6 @@ async function confirmDeleteAccount() {
   } catch {
     showToast('❌', 'Could not reach the backend.', 'error');
   }
-=======
-    if (res.ok) { showToast('Account deleted', 'Account deleted.', 'success'); setTimeout(() => logout(), 1200); }
-    else { const d = await res.json(); showToast('Delete failed', d.error || 'Failed.', 'error'); }
-  } catch { showToast('Network error', 'Backend unreachable.', 'error'); }
->>>>>>> Stashed changes
 }
 
 // Authenticated fetch helper
@@ -670,15 +287,9 @@ async function authFetch(path, opts = {}) {
   return fetch(`${API}${path}`, { ...opts, headers });
 }
 
-<<<<<<< Updated upstream
 // ══════════════════════════════════════════════
 // RIGHT PANEL — TAB SWITCHER
 // ══════════════════════════════════════════════
-=======
-// User menu
-// RIGHT PANEL
-// Account actions
->>>>>>> Stashed changes
 function switchRightTab(tab, el) {
   document.querySelectorAll('.right-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.right-tab-panel').forEach(p => p.classList.remove('active'));
@@ -686,15 +297,9 @@ function switchRightTab(tab, el) {
   document.getElementById(`tab-${tab}`).classList.add('active');
 }
 
-<<<<<<< Updated upstream
 // ══════════════════════════════════════════════
 // SOURCES
 // ══════════════════════════════════════════════
-=======
-// Sessions
-// SOURCES
-// Session helpers
->>>>>>> Stashed changes
 function renderSources(sources) {
   window._lastSources = sources || [];
   activeSource = null;
@@ -724,13 +329,8 @@ function renderSources(sources) {
     const subjectColor = SUBJECT_COLORS[dominantSubject] || SUBJECT_COLORS['General'];
     const subjectBadge = `<span style="background:${subjectColor}20; color:${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; margin-left:6px;">${dominantSubject}</span>`;
     const isWeb = (s.source_type === 'web') || (s.metadata?.source_type === 'web');
-<<<<<<< Updated upstream
     const icon = isWeb ? '🌐' : '📄';
     const title = isWeb ? (s.title || s.filename || `Web Source ${i+1}`) : (s.filename || s.doc_id || `Source ${i+1}`);
-=======
-    const icon = isWeb ? '<span class="source-kind-icon" aria-hidden="true">&#127760;</span>' : '<span class="source-kind-icon" aria-hidden="true">&#128196;</span>';
-    const title = isWeb ? (s.title || s.filename || `Web ${i+1}`) : (s.filename || `Source ${i+1}`);
->>>>>>> Stashed changes
     const url = s.url || s.metadata?.url;
 
     const clickable = isWeb && url ? `onclick="openWebSource('${url}', ${i})"` : `onclick="setActiveSource(${i})"`;
@@ -747,58 +347,9 @@ function renderSources(sources) {
   }).join('');
 }
 
-<<<<<<< Updated upstream
 // ══════════════════════════════════════════════
 // SESSIONS
 // ══════════════════════════════════════════════
-=======
-function buildDocumentSourceEntries(docs) {
-  return [...(docs || [])]
-    .sort((a, b) => new Date(b.upload_date || 0) - new Date(a.upload_date || 0))
-    .map(doc => {
-      const subjects = Array.isArray(doc.subject)
-        ? doc.subject.filter(Boolean)
-        : (doc.subject ? [doc.subject] : []);
-      const subjectText = subjects.length ? `Subjects: ${subjects.join(', ')}` : 'Uploaded document';
-      const uploadedAt = doc.upload_date ? new Date(doc.upload_date).toLocaleString() : null;
-      const snippet = uploadedAt ? `${subjectText} - Uploaded ${uploadedAt}` : subjectText;
-      return {
-        chunk_id: null,
-        doc_id: doc.id,
-        filename: doc.filename,
-        content: snippet,
-        score: null,
-        chunk_order: null,
-        citation_index: null,
-        metadata: {},
-        source_type: 'doc',
-      };
-    });
-}
-
-function syncSourcesWithUploadedDocs() {
-  if (hasActiveQuerySources) return;
-  renderSources(window._uploadedDocSources || []);
-}
-
-function setActiveSource(i) {
-  const sources = window._lastSources || [];
-  activeSource = sources[i] || null;
-  document.querySelectorAll('.source-card').forEach((el, idx) => el.classList.toggle('active', idx === i));
-  if (activeSource) {
-    const docId = activeSource.doc_id || (activeSource.filename ? window._docIdByFilename[activeSource.filename] : null);
-    if (docId) {
-      const fn = activeSource.filename || (window._docsById[docId]?.filename ?? `Document ${docId}`);
-      previewDoc(docId, fn, { chunkOrder: activeSource.chunk_order ?? null, needle: activeSource.content || '' });
-    }
-  }
-}
-function openWebSource(url, idx) { setActiveSource(idx); window.open(url, '_blank', 'noopener,noreferrer'); }
-
-// Session history
-// SESSIONS
-// Session list
->>>>>>> Stashed changes
 async function loadSessions() {
   if (!currentToken) return;
   try {
@@ -811,18 +362,11 @@ async function loadSessions() {
     }
     list.innerHTML = data.sessions.map(s => `
       <div class="session-item" onclick="loadSession(${s.id})" title="${escapeHtml(s.title)}">
-<<<<<<< Updated upstream
         <span class="session-icon">💬</span>
         <span class="session-title">${escapeHtml(s.title || 'Untitled')}</span>
         <button class="session-del" onclick="deleteSession(${s.id}, event)" title="Delete session">✕</button>
       </div>`
     ).join('');
-=======
-        <span class="session-icon">C</span>
-        <span class="session-title">${escapeHtml(s.title || 'Untitled')}</span>
-        <button class="session-del" onclick="deleteSession(${s.id},event)" title="Delete">x</button>
-      </div>`).join('');
->>>>>>> Stashed changes
   } catch(e) { console.warn('Could not load sessions', e); }
 }
 
@@ -888,7 +432,6 @@ async function deleteSession(sessionId, e) {
   if (!confirm('Delete this chat session and all its messages?')) return;
   try {
     const res = await authFetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-<<<<<<< Updated upstream
     if (res.ok) {
       showToast('🗑️', 'Session deleted.', 'success');
       
@@ -910,267 +453,6 @@ async function deleteSession(sessionId, e) {
 // ══════════════════════════════════════════════
 // DOCUMENTS
 // ══════════════════════════════════════════════ 
-=======
-    if (res.ok) { showToast('Deleted', 'Session deleted.', 'success'); loadSessions(); }
-    else showToast('Delete failed', 'Could not delete session.', 'error');
-  } catch { showToast('Network error', 'Backend unreachable.', 'error'); }
-}
-
-// Folder scope
-// FOLDERS - CRUD
-// Folder picker
-async function loadFolders() {
-  if (!currentToken) { folders = []; return; }
-  try {
-    const res = await authFetch('/api/folders/');
-    const data = await res.json();
-    folders = data.folders || [];
-  } catch { folders = []; }
-}
-
-function setFolderModalCopy(text) {
-  const copy = document.getElementById('folder-modal-copy');
-  if (copy) copy.textContent = text;
-}
-
-function openCreateFolderModal() {
-  if (!currentUser) {
-    showToast('Login required', 'Please log in first.', 'error');
-    return;
-  }
-  folderModalMode = 'create';
-  folderModalId = null;
-  document.getElementById('folder-modal-title').textContent = 'New Folder';
-  document.getElementById('folder-modal-submit').textContent = 'Create Folder';
-  document.getElementById('folder-name-input').value = '';
-  document.getElementById('folder-modal-error').textContent = '';
-  setFolderModalCopy('Create a place for related documents so your sidebar stays tidy.');
-  document.getElementById('folder-modal-overlay').classList.add('visible');
-  setTimeout(() => document.getElementById('folder-name-input').focus(), 100);
-}
-
-
-function openRenameFolderModal(folderId, currentName) {
-  folderModalMode = 'rename';
-  folderModalId = folderId;
-  document.getElementById('folder-modal-title').textContent = 'Rename Folder';
-  document.getElementById('folder-modal-submit').textContent = 'Save Name';
-  document.getElementById('folder-name-input').value = currentName;
-  document.getElementById('folder-modal-error').textContent = '';
-  setFolderModalCopy('Choose a clearer label so this folder is easier to find later.');
-  document.getElementById('folder-modal-overlay').classList.add('visible');
-  setTimeout(() => document.getElementById('folder-name-input').focus(), 100);
-}
-
-
-function closeFolderModal() {
-  document.getElementById('folder-modal-overlay').classList.remove('visible');
-}
-
-document.getElementById('folder-modal-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('folder-modal-overlay')) closeFolderModal();
-});
-
-async function submitFolderModal() {
-  const name = document.getElementById('folder-name-input').value.trim();
-  const errEl = document.getElementById('folder-modal-error');
-  if (!name) {
-    errEl.textContent = 'Folder name is required.';
-    return;
-  }
-  try {
-    let res;
-    if (folderModalMode === 'create') {
-      res = await authFetch('/api/folders/', { method: 'POST', body: JSON.stringify({ name }) });
-    } else {
-      res = await authFetch(`/api/folders/${folderModalId}`, { method: 'PATCH', body: JSON.stringify({ name }) });
-    }
-    const data = await res.json();
-    if (!res.ok) {
-      errEl.textContent = data.error || 'Failed to save folder.';
-      return;
-    }
-    showToast(
-      folderModalMode === 'create' ? 'Folder created' : 'Folder renamed',
-      folderModalMode === 'create' ? 'Folder created successfully.' : 'Folder renamed successfully.',
-      'success'
-    );
-    closeFolderModal();
-    loadDocuments();
-  } catch {
-    errEl.textContent = 'Backend unreachable.';
-  }
-}
-
-
-function deleteFolder(folderId, folderName) {
-  folderDeleteId = folderId;
-  folderDeleteName = folderName || 'this folder';
-  const nameEl = document.getElementById('folder-delete-modal-name');
-  if (nameEl) nameEl.textContent = folderDeleteName;
-  document.getElementById('folder-delete-modal-overlay').classList.add('visible');
-}
-
-function closeFolderDeleteModal() {
-  folderDeleteId = null;
-  folderDeleteName = '';
-  document.getElementById('folder-delete-modal-overlay').classList.remove('visible');
-}
-
-document.getElementById('folder-delete-modal-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('folder-delete-modal-overlay')) closeFolderDeleteModal();
-});
-
-async function confirmDeleteFolder() {
-  if (folderDeleteId == null) return;
-  try {
-    const res = await authFetch(`/api/folders/${folderDeleteId}`, { method: 'DELETE' });
-    if (res.ok) {
-      showToast('Folder deleted', `"${folderDeleteName}" was removed. Documents were moved to Unfiled.`, 'success');
-      closeFolderDeleteModal();
-      loadDocuments();
-    } else {
-      const data = await res.json().catch(() => ({}));
-      showToast('Delete failed', data.error || 'Could not delete this folder.', 'error');
-    }
-  } catch {
-    showToast('Delete failed', 'Backend unreachable.', 'error');
-  }
-}
-
-
-// Folder actions
-function showMoveMenu(docId, event) {
-  event.stopPropagation();
-  closeMoveMenu();
-  const rect = event.target.getBoundingClientRect();
-  const menu = document.createElement('div');
-  menu.id = 'move-folder-menu';
-  menu.className = 'move-folder-menu';
-  menu.style.top = rect.bottom + 8 + 'px';
-  menu.style.left = Math.min(rect.left, window.innerWidth - 236) + 'px';
-
-  let items = `
-    <button class="move-item" onclick="moveDocToFolder(${docId}, null)">
-      <span class="move-item-icon" aria-hidden="true">&#128193;</span>
-      <span class="move-item-label">Move to Unfiled</span>
-    </button>`;
-  if (folders.length > 0) items += '<div class="move-divider"></div>';
-  folders.forEach(f => {
-    items += `
-      <button class="move-item" onclick="moveDocToFolder(${docId}, ${f.id})">
-        <span class="move-item-icon" aria-hidden="true">&#128193;</span>
-        <span class="move-item-label">${escapeHtml(f.name)}</span>
-      </button>`;
-  });
-
-  menu.innerHTML = items;
-  document.body.appendChild(menu);
-  setTimeout(() => document.addEventListener('click', closeMoveMenu, { once: true }), 0);
-}
-
-function closeMoveMenu() { const m = document.getElementById('move-folder-menu'); if (m) m.remove(); }
-
-async function moveDocToFolder(docId, folderId) {
-  closeMoveMenu();
-  try {
-    const res = await fetch(`${API}/api/documents/${docId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}) },
-      body: JSON.stringify({ folder_id: folderId })
-    });
-    if (res.ok) {
-      showToast('Document moved', folderId == null ? 'Document moved to Unfiled.' : 'Document moved to the selected folder.', 'success');
-      loadDocuments();
-    } else {
-      showToast('Move failed', 'Could not move this document.', 'error');
-    }
-  } catch {
-    showToast('Move failed', 'Backend unreachable.', 'error');
-  }
-}
-
-
-// Chat scope
-// FOLDER SCOPE (for chat & quiz)
-// Folder scope modal
-function openFolderScopeModal() {
-  document.getElementById('add-menu').style.display = 'none';
-  document.getElementById('add-btn').classList.remove('active');
-  if (!currentUser) { showToast('Login required', 'Please log in first.', 'error'); return; }
-  renderFolderChecklist('folder-scope-checklist', scopedFolderIds);
-  document.getElementById('folder-scope-modal-overlay').classList.add('visible');
-}
-function closeFolderScopeModal() { document.getElementById('folder-scope-modal-overlay').classList.remove('visible'); }
-document.getElementById('folder-scope-modal-overlay').addEventListener('click', e => {
-  if (e.target === document.getElementById('folder-scope-modal-overlay')) closeFolderScopeModal();
-});
-
-function applyFolderScope() {
-  const checks = document.querySelectorAll('#folder-scope-checklist input[type="checkbox"]');
-  scopedFolderIds = [];
-  checks.forEach(cb => { if (cb.checked) scopedFolderIds.push(parseInt(cb.value)); });
-  updateFolderScopeUI(); closeFolderScopeModal();
-  if (scopedFolderIds.length > 0) {
-    const names = scopedFolderIds.map(id => { const f = folders.find(x => x.id === id); return f ? f.name : '?'; });
-    showToast('Scope updated', `Chat scoped to: ${names.join(', ')}`, 'success');
-  } else showToast('Scope cleared', 'Folder scope cleared.', 'success');
-}
-
-function clearFolderScope() { scopedFolderIds = []; updateFolderScopeUI(); showToast('Scope cleared', 'Folder scope cleared.', 'success'); }
-
-function updateFolderScopeUI() {
-  const pill = document.getElementById('folder-filter-pill');
-  const pillText = document.getElementById('folder-filter-pill-text');
-  const features = document.getElementById('active-features');
-  if (scopedFolderIds.length > 0) {
-    const names = scopedFolderIds.map(id => { const f = folders.find(x => x.id === id); return f ? f.name : '?'; });
-    pillText.textContent = names.length <= 2 ? names.join(', ') : `${names.length} folders`;
-    pill.style.display = 'inline-flex';
-  } else { pill.style.display = 'none'; }
-  const anyActive = webSearchEnabled || diagramEnabled || scopedFolderIds.length > 0;
-  features.style.display = anyActive ? 'flex' : 'none';
-}
-
-function renderFolderChecklist(containerId, selectedIds) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  if (folders.length === 0) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px;">No folders yet. Create one from the sidebar.</div>';
-    return;
-  }
-  el.innerHTML = folders.map(f => `
-    <label class="folder-check-item">
-      <input type="checkbox" value="${f.id}" ${selectedIds.includes(f.id) ? 'checked' : ''} />
-      <span class="folder-check-name">${escapeHtml(f.name)}</span>
-      <span class="folder-check-count">${f.document_count} doc${f.document_count !== 1 ? 's' : ''}</span>
-    </label>`).join('');
-}
-
-// Upload helpers
-// UPLOAD PROGRESS OVERLAY
-// Upload actions
-const UPLOAD_STAGES = [];
-
-let _uploadStageTimer = null;
-function showUploadProgress() {
-  clearTimeout(_uploadStageTimer);
-  const overlay = document.getElementById('upload-progress-overlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
-
-function hideUploadProgress() {
-  clearTimeout(_uploadStageTimer);
-  const overlay = document.getElementById('upload-progress-overlay');
-  if (overlay) overlay.style.display = 'none';
-}
-
-
-// Document actions
-// DOCUMENTS & FOLDER TREE
-// Delete actions
->>>>>>> Stashed changes
 function triggerSidebarUpload() {
   document.getElementById('sidebar-file-input').click();
 }
@@ -1300,21 +582,8 @@ async function onSidebarFileSelected(event) {
   await uploadDocumentFromSidebar(file);
 }
 
-<<<<<<< Updated upstream
 async function uploadDocumentFromSidebar(file) {
   showToast('⏳', `Uploading ${file.name}…`, '');
-=======
-async function uploadDocumentFromSidebar(file, folderId) {
-  if (!currentUser) {
-    showToast('Please login first.', 'Please login to upload files.', 'warning');
-    return;
-  }
-
-  const pendingId = createPendingUpload(file, folderId);
-  setDocumentsRefreshDelay(1000);
-  refreshDocumentsTreeFromState();
-  hideUploadProgress();
->>>>>>> Stashed changes
 
   const formData = new FormData();
   formData.append('file', file);
@@ -1335,7 +604,6 @@ async function uploadDocumentFromSidebar(file, folderId) {
     const data = await res.json();
 
     if (!res.ok) {
-<<<<<<< Updated upstream
       showToast('❌', data.error || 'Upload failed.', 'error');
       return;
     }
@@ -1344,43 +612,11 @@ async function uploadDocumentFromSidebar(file, folderId) {
     loadDocuments();  // refresh left sidebar document list
   } catch (e) {
     showToast('❌', 'Upload failed — backend unreachable.', 'error');
-=======
-      clearPendingUpload(pendingId);
-      await loadDocuments();
-      showToast('Upload failed', data.error || 'Could not process this file.', 'error');
-      return;
-    }
-
-    const serverDoc = data.document || {};
-    const updatedPending = applyServerDocumentToPending(pendingId, serverDoc);
-    if (updatedPending) {
-      updatePendingUploadRow(pendingId, updatedPending.progress, updatedPending.status_message);
-    }
-
-    const isIndexed = !!(updatedPending && updatedPending.id != null && !updatedPending.is_pending);
-    setDocumentsRefreshDelay(isIndexed ? 3000 : 1000);
-    hasActiveQuerySources = false;
-
-    if (isIndexed) {
-      clearPendingUpload(pendingId);
-      showToast('Upload complete', 'Document was classified and is ready to use.', 'success');
-    } else {
-      startPendingUploadTracking(pendingId, serverDoc.filename || file.name);
-      showToast('Upload received', 'Document is being processed and will appear automatically.', 'success');
-    }
-
-    await loadDocuments();
-  } catch {
-    clearPendingUpload(pendingId);
-    await loadDocuments();
-    showToast('Upload failed', 'Backend unreachable.', 'error');
->>>>>>> Stashed changes
   }
 }
 
 
 async function loadDocuments() {
-<<<<<<< Updated upstream
   try {
     const res  = await fetch(`${API}/api/documents/`);
     const data = await res.json();
@@ -1422,218 +658,6 @@ async function loadDocuments() {
           ${subjectBadge}
         </div>
         <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
-=======
-  if (isLoadingDocuments) {
-    documentsReloadRequested = true;
-    return;
-  }
-
-  isLoadingDocuments = true;
-  documentsReloadRequested = false;
-
-  try {
-    if (currentToken) await loadFolders();
-
-    const url = currentUser
-      ? `${API}/api/documents/?user_id=${currentUser.id}&_=${Date.now()}`
-      : `${API}/api/documents/?_=${Date.now()}`;
-    const res = await fetch(url, { cache: 'no-store' });
-    const data = await res.json();
-    const rawDocs = Array.isArray(data && data.documents)
-      ? data.documents
-      : (Array.isArray(data) ? data : []);
-    const baseDocs = rawDocs.map(doc => ({
-      ...doc,
-      status: doc?.status || 'indexed',
-      progress: doc?.progress ?? (doc?.status === 'indexed' ? 100 : 0),
-    }));
-
-    lastServerDocuments = baseDocs;
-
-    const indexedServerFilenames = new Set(
-      baseDocs
-        .filter(d => d && (d.status || 'indexed') === 'indexed')
-        .map(d => d && d.filename)
-        .filter(Boolean)
-    );
-    const seenPendingIds = new Set();
-    pendingUploads = pendingUploads.filter(d => {
-      if (!d || !d.pending_id) return false;
-      if (seenPendingIds.has(d.pending_id)) return false;
-      seenPendingIds.add(d.pending_id);
-      const keepPending = !indexedServerFilenames.has(d.filename);
-      if (!keepPending) {
-        stopPendingUploadTimer(d.pending_id);
-        stopPendingUploadTracking(d.pending_id);
-      }
-      return keepPending;
-    });
-
-    const docs = getVisibleDocuments(baseDocs);
-    const hasPendingDocs = (docs || []).some(d => d && isActiveUploadStatus(d.status || 'indexed'));
-    const activeLocalPendingCount = pendingUploads.filter(d => d && isActiveUploadStatus(d.status || 'indexed')).length;
-    setDocumentsRefreshDelay(hasPendingDocs || activeLocalPendingCount ? 1000 : 3000);
-    renderDocumentsTree(docs);
-  } catch(e) {
-    console.warn('Could not load documents', e);
-  } finally {
-    isLoadingDocuments = false;
-    if (documentsReloadRequested) {
-      documentsReloadRequested = false;
-      setTimeout(() => loadDocuments(), 0);
-    }
-  }
-}
-function renderDocItem(doc) {
-  const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : []);
-  const primary = subjects[0] || '';
-  const color = SUBJECT_COLORS[primary] || SUBJECT_COLORS['General'];
-  const badge = primary
-    ? `<span class="subject-badge-sm" style="background:${color}20;color:${color};">${escapeHtml(primary)}</span>`
-    : '';
-
-  const status = doc.status || (doc.is_pending ? 'processing' : (doc.is_file_only ? 'queued' : 'indexed'));
-  const isPending = !!doc.is_pending || status === 'queued' || status === 'processing';
-  const isFailed = status === 'failed';
-  const isFileOnly = !!doc.is_file_only || status !== 'indexed';
-  const isIndexed = status === 'indexed' && doc.id != null;
-  const rowClass = `doc-item${isPending ? ' pending' : ''}${isFileOnly ? ' file-only' : ''}${isFailed ? ' failed' : ''}`;
-
-  const rawFilename = doc.filename || 'Untitled';
-  const safeFilename = rawFilename.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const filename = escapeHtml(rawFilename);
-  const pct = Math.max(5, Math.min(99, Math.round(Number(doc.progress || 0))));
-
-  let stateChipHtml = '';
-  let statusHtml = '';
-
-  if (isFailed) {
-    stateChipHtml = `<span class="doc-state-chip failed">Failed</span>`;
-    statusHtml = `<div class="doc-status-line">${escapeHtml(doc.error_message || doc.status_message || 'Processing failed')}</div>`;
-  } else if (isPending) {
-    const statusLabel = escapeHtml(doc.status_message || `Processing ${pct}%`);
-    stateChipHtml = `<span class="doc-state-chip pending">${pct}%</span>`;
-    statusHtml = `
-      <div class="doc-progress-row">
-        <div class="doc-status-line">${statusLabel}</div>
-        <span class="doc-progress-value">${pct}%</span>
-      </div>
-      <div class="doc-inline-progress"><span style="width:${pct}%"></span></div>`;
-  } else if (isFileOnly) {
-    const waitingLabel = escapeHtml(doc.status_message || 'Waiting to be indexed');
-    stateChipHtml = `<span class="doc-state-chip queued">Queued</span>`;
-    statusHtml = `
-      <div class="doc-progress-row">
-        <div class="doc-status-line">${waitingLabel}</div>
-        <span class="doc-progress-value">Queued</span>
-      </div>
-      <div class="doc-inline-progress queued"><span style="width:18%"></span></div>`;
-  } else {
-    stateChipHtml = `<span class="doc-state-chip success"><span class="doc-state-check" aria-hidden="true">&#10003;</span>Ready</span>`;
-  }
-
-  const metaHtml = (badge || stateChipHtml) ? `<div class="doc-meta-row">${badge}${stateChipHtml}</div>` : '';
-
-  const actions = isIndexed
-    ? `<span class="doc-actions" onclick="event.stopPropagation()">
-         <button onclick="event.stopPropagation(); showMoveMenu(${doc.id}, event)" title="Move to folder">Move</button>
-         <button class="danger" onclick="event.stopPropagation(); deleteDoc(${doc.id})" title="Delete document">Delete</button>
-       </span>`
-    : '';
-
-  const click = isIndexed ? `onclick="previewDoc(${doc.id}, '${safeFilename}')"` : '';
-  const pendingAttr = doc.pending_id ? `data-pending-id="${doc.pending_id}"` : '';
-
-  return `
-    <div class="${rowClass}" ${click} ${pendingAttr}>
-      <span class="doc-icon" aria-hidden="true">&#128196;</span>
-      <div class="doc-main">
-        <div class="doc-title-row">
-          <span class="doc-name" title="${filename}">${filename}</span>
-          ${actions}
-        </div>
-        ${metaHtml}
-        ${statusHtml}
-      </div>
-    </div>`;
-}
-function toggleFolder(folderId) {
-  if (collapsedFolders.has(folderId)) collapsedFolders.delete(folderId);
-  else collapsedFolders.add(folderId);
-  refreshDocumentsTreeFromState();
-}
-
-
-function uploadToFolder(folderId) {
-  const inp = document.createElement('input');
-  inp.type = 'file'; inp.accept = '.pdf,.docx,.pptx,.txt';
-  inp.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !currentUser) return;
-    await uploadDocumentFromSidebar(file, folderId);
-  };
-  inp.click();
-}
-
-async function tryOpenRawDocument(docId, filename) {
-  const attempts = [];
-
-  if (docId !== null && docId !== undefined) {
-    attempts.push({
-      headUrl: `${API}/api/documents/raw/${docId}`,
-      openUrl: `${API}/api/documents/raw/${docId}`
-    });
-  }
-
-  if (filename) {
-    const encodedFilename = encodeURIComponent(filename);
-    attempts.push({
-      headUrl: `${API}/api/documents/raw-by-name/${encodedFilename}`,
-      openUrl: `${API}/api/documents/raw-by-name/${encodedFilename}`
-    });
-  }
-
-  for (const attempt of attempts) {
-    try {
-      const rawRes = await fetch(attempt.headUrl, { method: 'HEAD' });
-      if (rawRes.ok) {
-        window.open(attempt.openUrl, '_blank', 'noopener,noreferrer');
-        return true;
-      }
-    } catch {}
-  }
-
-  return false;
-}
-
-async function previewDoc(docId, filename, opts = {}) {
-  try {
-    const res = await fetch(`${API}/api/documents/${docId}?limit=200&_=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) {
-      if (await tryOpenRawDocument(docId, filename)) return;
-      const data = await res.json().catch(() => ({}));
-      openDocModal(filename, `<div style="color:var(--text-muted)">${escapeHtml(data.error || "Preview failed")}</div>`);
-      return;
-    }
-    const data = await res.json();
-    const chunks = data.chunks || [];
-    if (!chunks.length && await tryOpenRawDocument(docId, filename)) {
-      return;
-    }
-    const needle = opts.needle || '';
-    const chunkOrder = opts.chunkOrder !== null && opts.chunkOrder !== undefined ? Number(opts.chunkOrder) : null;
-    const tip = `<div style="color:var(--text-muted);margin-bottom:10px;">${chunkOrder !== null ? `Highlighting chunk <b>#${chunkOrder}</b> below.` : 'Click a source to auto-highlight its chunk.'}</div>`;
-    const cards = chunks.map(c => {
-      const isHit = (chunkOrder !== null && c.chunk_order === chunkOrder) || (chunkOrder === null && needle && (c.content||'').includes(needle));
-      const page = c.metadata?.source?.page;
-      const charCount = c.len || (c.content||'').length;
-      return `<div class="chunk-card ${isHit ? 'highlight' : ''}" data-chunk="${c.chunk_order}">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
-          <div style="font-weight:600;color:var(--accent);">Chunk ${c.chunk_order}</div>
-          <div style="font-size:11px;color:var(--text-muted);">${page != null ? 'p.' + page + ' | ' : ''}${charCount} chars</div>
-        </div>
-        <div style="white-space:pre-wrap;font-size:12px;">${escapeHtml(c.content||'')}</div>
->>>>>>> Stashed changes
       </div>`;
     }).join('');
   } catch(e) {
@@ -1721,7 +745,6 @@ async function previewDoc(docId, filename, opts = {}) {
   }
 }
 
-<<<<<<< Updated upstream
 async function deleteDoc(docId, e) {
   e.stopPropagation();
   if (!confirm('Delete this document and all its chunks?')) return;
@@ -1804,68 +827,11 @@ function editDocumentSubject(docId, currentSubjects) {
 // TOOL RENDERING (Mermaid / Desmos)
 // ══════════════════════════════════════════════
 
-=======
-
-async function deleteDoc(docId) {
-  if (!confirm('Delete this document and all its chunks?')) return;
-  try {
-    const res = await fetch(`${API}/api/documents/${docId}`, { method: 'DELETE' });
-    if (res.ok) {
-      showToast('Document deleted', 'Document deleted.', 'success');
-      loadDocuments();
-    } else {
-      showToast('Delete failed', 'Could not delete this document.', 'error');
-    }
-  } catch {
-    showToast('Delete failed', 'Backend unreachable.', 'error');
-  }
-}
-
-
-// Link ingestion
-let pendingLinks = [];
-function addLink() {
-  const inp = document.getElementById('link-input');
-  const url = (inp.value || '').trim();
-  if (!url) return;
-  try { const p = new URL(url); if (p.protocol !== 'https:') { showToast('HTTPS only', 'Only HTTPS links.', 'warning'); return; } }
-  catch { showToast('Invalid URL', 'Invalid URL.', 'error'); return; }
-  pendingLinks.push(url); inp.value = ''; renderLinkList();
-}
-function removeLink(i) { pendingLinks.splice(i, 1); renderLinkList(); }
-function renderLinkList() {
-  const el = document.getElementById('link-list');
-  if (!el) return;
-  el.innerHTML = pendingLinks.map((u, i) => `<div class="link-item"><span>${escapeHtml(u)}</span><button onclick="removeLink(${i})">Remove</button></div>`).join('');
-}
-async function ingestLinks() {
-  if (!currentUser) { showToast('Login required', 'Please log in first.', 'error'); return; }
-  if (!pendingLinks.length) { showToast('No links', 'No links added.', 'warning'); return; }
-  showToast('Working', 'Ingesting links...', 'success');
-  const res = await fetch(`${API}/api/links/ingest`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ urls: pendingLinks, user_id: currentUser.id })
-  });
-  const data = await res.json();
-  if (!res.ok) { showToast('Ingest failed', data.error || 'Link ingest failed.', 'error'); return; }
-  const ok = data.ingested?.length || 0;
-  const bad = data.rejected?.length || 0;
-  if (ok > 0) showToast('Links ingested', `Ingested ${ok} link(s)${bad > 0 ? `, ${bad} rejected` : ''}`, ok > 0 && bad > 0 ? 'warning' : 'success');
-  else { showToast('All rejected', 'All links rejected.', 'error'); return; }
-  hasActiveQuerySources = false;
-  pendingLinks = []; renderLinkList(); loadDocuments();
-}
-
-// Tool output
-// TOOL RENDERING
-// Diagrams
->>>>>>> Stashed changes
 function renderToolPanel(tool) {
   if (!tool) return '';
   const id = 'tool-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
 
   if (tool.type === 'mermaid') {
-<<<<<<< Updated upstream
     return `
       <div class="tool-panel" data-tool-id="${id}">
         <div class="tool-panel-header">
@@ -1875,13 +841,6 @@ function renderToolPanel(tool) {
             <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'png')">⬇ PNG</button>
             <button class="tool-download-btn" onclick="downloadMermaid('${id}', 'pdf')">⬇ PDF</button>
           </div>
-=======
-    return `<div class="tool-panel" data-tool-id="${id}">
-      <div class="tool-panel-header"><span>Diagram</span>
-        <div class="download-group">
-          <button class="tool-download-btn" onclick="downloadMermaid('${id}','svg')">SVG</button>
-          <button class="tool-download-btn" onclick="downloadMermaid('${id}','png')">PNG</button>
->>>>>>> Stashed changes
         </div>
         <div class="mermaid-container" id="${id}">
           <div class="mermaid">${escapeHtml(tool.code)}</div>
@@ -2000,7 +959,6 @@ async function downloadMermaid(id, format = 'svg') {
   }
 }
 
-<<<<<<< Updated upstream
 function downloadDesmos(id) {
   const calc = window['desmos_' + id];
   if (!calc) return alert('Graph not ready yet.');
@@ -2015,11 +973,6 @@ function downloadDesmos(id) {
 // ══════════════════════════════════════════════
 // QUERY
 // ══════════════════════════════════════════════
-=======
-// Chat rendering
-// QUERY
-// Messages
->>>>>>> Stashed changes
 async function sendQuery() {
   const textarea = document.getElementById('query-input');
   const query    = textarea.value.trim();
@@ -2102,7 +1055,6 @@ async function sendQuery() {
   }
 }
 
-<<<<<<< Updated upstream
 // ══════════════════════════════════════════════
 // MESSAGE HELPERS
 // ══════════════════════════════════════════════
@@ -2150,55 +1102,13 @@ function appendMessage(role, docName, text, isLoading = false, rewriteMetadata =
       ${docName ? `<div class="message-doc-badge">📄 ${escapeHtml(docName)}</div>` : ''}
       <div class="message-text ${isLoading ? 'loading' : ''} ${isUser ? 'plain' : 'md'}">${isUser ? escapeHtml(text) : renderMarkdown(text)}</div>
       ${rewriteHtml}
-=======
-// Message updates
-// MESSAGE HELPERS
-// Assistant state
-function appendMessage(role, docName, text, isLoading = false, rewriteMetadata = null) {
-  const messageId = `msg-${++msgCounter}`;
-  const chatWindow = document.getElementById('chat-window');
-  const isUserMessage = role === 'user';
-  const messageEl = document.createElement('div');
-  messageEl.className = 'message';
-  messageEl.id = messageId;
-
-  let queryRewriteHtml = '';
-  if (isUserMessage && rewriteMetadata && rewriteMetadata.query_rewritten) {
-    queryRewriteHtml = `
-      <div class="query-rewrite-toggle" onclick="toggleRewriteDetails('${messageId}')">
-            <span class="rewrite-icon">*</span><span class="rewrite-label">Query was rewritten</span><span class="rewrite-arrow">v</span>
-      </div>
-      <div class="query-rewrite-details" id="${messageId}-rewrite" style="display:none;">
-        <div class="rewrite-detail-item"><div class="rewrite-detail-label">Original:</div><div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.original_query)}</div></div>
-        <div class="rewrite-detail-item"><div class="rewrite-detail-label">Rewritten:</div><div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.rewritten_query || text)}</div></div>
-        <div class="rewrite-detail-item"><div class="rewrite-detail-label">Strategy:</div><div class="rewrite-detail-value"><span class="rewrite-strategy-badge">${escapeHtml(rewriteMetadata.rewrite_strategy || 'auto')}</span></div></div>
-        ${rewriteMetadata.score_improvement != null ? `<div class="rewrite-detail-item"><div class="rewrite-detail-label">Improvement:</div><div class="rewrite-detail-value rewrite-score-positive">+${rewriteMetadata.score_improvement.toFixed(2)}</div></div>` : ''}
-      </div>`;
-  }
-
-  const avatarLabel = isUserMessage ? 'Y' : 'AI';
-  const roleLabel = isUserMessage ? 'You' : 'RAG Assistant';
-  const docBadgeHtml = docName ? `<div class="message-doc-badge">Document: ${escapeHtml(docName)}</div>` : '';
-  const textHtml = isUserMessage ? escapeHtml(text) : renderMarkdown(text);
-
-  messageEl.innerHTML = `
-    <div class="avatar ${isUserMessage ? 'user' : 'bot'}">${avatarLabel}</div>
-    <div class="message-body">
-      <div class="message-role">${roleLabel}</div>
-      ${docBadgeHtml}
-      <div class="message-text ${isLoading ? 'loading' : ''} ${isUserMessage ? 'plain' : 'md'}">${textHtml}</div>
-      ${queryRewriteHtml}
->>>>>>> Stashed changes
     </div>`;
-
-  chatWindow.appendChild(messageEl);
-  if (!isUserMessage) initMermaidInElement(messageEl.querySelector('.message-text'));
-  chatWindow.scrollTop = chatWindow.scrollHeight;
-  return messageId;
+  win.appendChild(div);
+  win.scrollTop = win.scrollHeight;
+  return id;
 }
 
 function updateMessage(id, text, toolHtml = '') {
-<<<<<<< Updated upstream
   const msgEl = document.getElementById(id);
   const textEl = msgEl ? msgEl.querySelector('.message-text') : null;
   if (textEl) {
@@ -2208,23 +1118,6 @@ function updateMessage(id, text, toolHtml = '') {
     initMermaidInElement(textEl);
   }
   return msgEl;  // return the message div for KaTeX re-render etc.
-=======
-  const messageEl = document.getElementById(id);
-  const messageTextEl = messageEl ? messageEl.querySelector('.message-text') : null;
-
-  if (stageTimer) {
-    clearInterval(stageTimer);
-    stageTimer = null;
-  }
-
-  if (messageTextEl) {
-    messageTextEl.innerHTML = renderMarkdown(text) + toolHtml;
-    messageTextEl.classList.remove('loading');
-    initMermaidInElement(messageTextEl);
-  }
-
-  return messageEl;
->>>>>>> Stashed changes
 }
 
 function toggleRewriteDetails(messageId) {
@@ -2239,24 +1132,14 @@ function toggleRewriteDetails(messageId) {
   }
 }
 
-<<<<<<< Updated upstream
 // ══════════════════════════════════════════════
 // NEW CHAT
 // ══════════════════════════════════════════════
-=======
-// New chat
-// NEW CHAT
-// Welcome state
->>>>>>> Stashed changes
 function newChat() {
   currentSession = null;
   document.getElementById('chat-window').innerHTML = `
     <div id="welcome">
-<<<<<<< Updated upstream
       <div class="welcome-icon">💬</div>
-=======
-      <div class="welcome-icon">AI</div>
->>>>>>> Stashed changes
       <h2>Ask your documents anything</h2>
       <p>Upload documents using the sidebar, then ask questions about them.</p>
     </div>`;
@@ -2264,15 +1147,9 @@ function newChat() {
   renderSources(null);
 }
 
-<<<<<<< Updated upstream
 // ══════════════════════════════════════════════
 // UTILITY
 // ══════════════════════════════════════════════
-=======
-// Stage progress
-// UTILITY
-// Progress helpers
->>>>>>> Stashed changes
 function escapeHtml(str) {
   return String(str)
     .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -2333,52 +1210,15 @@ function autoResize(el) {
   el.style.height = Math.min(el.scrollHeight, 160) + 'px';
 }
 
-
-function normalizeToastTitle(title) {
-  const raw = String(title || '').replace(/\s+/g, ' ').trim();
-  if (!raw) return '';
-  if (raw.length > 60) return '';
-  if (/[^ -~]/.test(raw)) return '';
-  return raw;
-}
-
-function normalizeToastMessage(msg) {
-  const raw = String(msg || '').replace(/\s+/g, ' ').trim();
-  if (!raw) return '';
-  if (raw.length > 220) return raw.slice(0, 220).trimEnd() + '...';
-  return raw;
-}
-
-function getToastIcon(type) {
-  if (type === 'success') return '\u2713';
-  if (type === 'error') return '!';
-  if (type === 'warning') return '!';
-  return 'i';
-}
-
 function showToast(icon, msg, type) {
   const toast = document.getElementById('upload-toast');
-<<<<<<< Updated upstream
   document.getElementById('toast-icon').textContent = icon;
   document.getElementById('toast-msg').textContent  = msg;
-=======
-  const toastIcon = document.getElementById('toast-icon');
-  const toastMsg = document.getElementById('toast-msg');
-  const safeTitle = normalizeToastTitle(icon);
-  const safeMsg = normalizeToastMessage(msg);
-  const combinedMessage = safeTitle && safeMsg && safeTitle !== safeMsg
-    ? `${safeTitle}. ${safeMsg}`
-    : (safeMsg || safeTitle || 'Done.');
-
-  toastIcon.textContent = getToastIcon(type);
-  toastMsg.textContent = combinedMessage;
->>>>>>> Stashed changes
   toast.className = `visible ${type}`;
   clearTimeout(toastTimeout);
   toastTimeout = setTimeout(() => { toast.className = ''; }, 3500);
 }
 
-<<<<<<< Updated upstream
 //loading messages
 function startStageProgress(messageId) {
   const el = document.querySelector(`#${messageId} .message-text`);
@@ -2401,33 +1241,6 @@ function startStageProgress(messageId) {
 function stopStageProgress() {
   if (stageTimer) clearInterval(stageTimer);
   stageTimer = null;
-=======
-
-function startStageProgress(messageId) {
-  const messageTextEl = document.querySelector(`#${messageId} .message-text`);
-  if (!messageTextEl) return;
-
-  clearInterval(stageTimer);
-
-  const progressStages = [
-    'Retrieving relevant chunks...',
-    'Reranking the best matches...',
-    'Drafting the answer...'
-  ];
-
-  let stageIndex = 0;
-  messageTextEl.textContent = progressStages[stageIndex++];
-
-  stageTimer = setInterval(() => {
-    if (!messageTextEl.isConnected || stageIndex >= progressStages.length) {
-      clearInterval(stageTimer);
-      stageTimer = null;
-      return;
-    }
-
-    messageTextEl.textContent = progressStages[stageIndex++];
-  }, 700);
->>>>>>> Stashed changes
 }
 
 function openDocModal(title, bodyHtml) {
@@ -2442,13 +1255,8 @@ function closeDocModal() {
 
 function toggleWebSearch() {
   webSearchEnabled = !webSearchEnabled;
-<<<<<<< Updated upstream
   showToast('🌐', webSearchEnabled ? 'Web search enabled' : 'Web search disabled', 'success');
   _syncAddMenuState(); 
-=======
-  showToast('Web search', webSearchEnabled ? 'Web search enabled' : 'Web search disabled', 'success');
-  _syncAddMenuState();
->>>>>>> Stashed changes
 }
 
 // ── Add menu toggle ────────────────────────────────────────
@@ -2483,18 +1291,11 @@ function selectWebSearch() {
 function selectDiagram() {
   diagramEnabled = !diagramEnabled;
   document.getElementById('diagram-check').style.display = diagramEnabled ? 'inline' : 'none';
-<<<<<<< Updated upstream
   document.getElementById('diagram-pill').style.display  = diagramEnabled ? 'inline-flex' : 'none';
   document.getElementById('active-features').style.display = 
     (diagramEnabled || webSearchEnabled) ? 'flex' : 'none';
   document.getElementById('add-menu').style.display = 'none';  // replaces closeAddMenu()
   showToast('🔀', diagramEnabled ? 'Diagram mode enabled' : 'Diagram mode disabled', 'success');
-=======
-  document.getElementById('diagram-pill').style.display = diagramEnabled ? 'inline-flex' : 'none';
-  document.getElementById('add-menu').style.display = 'none';
-  _syncAddMenuState();
-  showToast('Diagram mode', diagramEnabled ? 'Diagram mode on' : 'Diagram mode off', 'success');
->>>>>>> Stashed changes
 }
 
 // ── Quiz option ────────────────────────────────────────────
@@ -2518,7 +1319,6 @@ function _syncAddMenuState() {
   if (features) features.style.display = anyActive ? 'flex' : 'none';
 }
 
-<<<<<<< Updated upstream
 
 function highlightText(fullText, needle) {
   if (!needle || needle.length < 20) return escapeHtml(fullText);
@@ -2559,12 +1359,6 @@ document.getElementById('doc-modal')?.addEventListener('click', (e) => {
 let _currentQuiz    = null;
 let _quizAnswers    = {};
 let _quizSubmitted  = false;
-=======
-// Quiz modal
-// QUIZ
-// Quiz generation
-let _currentQuiz = null, _quizAnswers = {}, _quizSubmitted = false;
->>>>>>> Stashed changes
 
 function openQuizModal() {
   closeQuiz();
@@ -2573,7 +1367,6 @@ function openQuizModal() {
   document.getElementById('quiz-error').textContent = '';
 
   const note = document.getElementById('quiz-scope-note');
-<<<<<<< Updated upstream
   if (currentSession) {
     note.textContent = `📎 Quiz will use documents from your current session.`;
   } else if (currentUser) {
@@ -2581,10 +1374,6 @@ function openQuizModal() {
   } else {
     note.textContent = `ℹ️ Log in to scope the quiz to your documents.`;
   }
-=======
-  if (!currentUser) note.textContent = 'Log in to scope quiz to your documents.';
-  else note.textContent = folders.length > 0 ? '' : 'Create folders to scope quiz content.';
->>>>>>> Stashed changes
 }
 
 function closeQuizModal() {
@@ -2613,14 +1402,10 @@ async function generateQuiz() {
       docIds     = data.document_ids || [];
     } catch { /* use empty = all docs */ }
   }
-<<<<<<< Updated upstream
 
   btn.disabled    = true;
   btn.textContent = 'Generating…';
 
-=======
-  btn.disabled = true; btn.textContent = 'Generating...';
->>>>>>> Stashed changes
   try {
     const res  = await authFetch('/api/quiz/generate', {
       method : 'POST',
@@ -2666,16 +1451,11 @@ function _startQuiz(quiz) {
   document.getElementById('quiz-questions').style.display = 'flex';
 
   const cfg = quiz.config;
-<<<<<<< Updated upstream
   document.getElementById('quiz-badge').textContent =
     `${cfg.difficulty} · ${cfg.question_type.replace('_', '-')}`;
   document.getElementById('quiz-progress').textContent =
     `${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''}`;
 
-=======
-  document.getElementById('quiz-badge').textContent = `${cfg.difficulty} quiz`;
-  document.getElementById('quiz-progress').textContent = `${quiz.questions.length} question${quiz.questions.length !== 1 ? 's' : ''}`;
->>>>>>> Stashed changes
   const container = document.getElementById('quiz-questions');
   container.innerHTML = '';
   quiz.questions.forEach((q, idx) => {
@@ -2706,14 +1486,10 @@ function _buildQuestionCard(q, num) {
           </div>`;
       }).join('')}
     </div>
-<<<<<<< Updated upstream
     <div class="quiz-explanation" id="quiz-exp-${q.id}">
       💡 ${q.explanation}
     </div>
   `;
-=======
-    <div class="quiz-explanation" id="quiz-exp-${q.id}">Explanation will appear after you answer.</div>`;
->>>>>>> Stashed changes
   return card;
 }
 
@@ -2777,16 +1553,12 @@ function submitQuiz() {
 
 function _showResults(correct, total) {
   const pct = Math.round((correct / total) * 100);
-<<<<<<< Updated upstream
   const msg = pct === 100 ? '🏆 Perfect score!'
             : pct >= 80   ? '🎉 Great job!'
             : pct >= 60   ? '👍 Good effort!'
             : pct >= 40   ? '📚 Keep studying!'
             :                '💪 Review the material and try again!';
 
-=======
-  const msg = pct === 100 ? 'Perfect!' : pct >= 80 ? 'Great job!' : pct >= 60 ? 'Good effort!' : pct >= 40 ? 'Keep studying!' : 'Try again!';
->>>>>>> Stashed changes
   document.getElementById('quiz-score-banner').innerHTML = `
     <div class="score-number">${correct}/${total}</div>
     <div class="score-label">${pct}% correct</div>
@@ -2805,7 +1577,6 @@ function _showResults(correct, total) {
     const card = document.createElement('div');
     card.className = 'quiz-card';
     card.innerHTML = `
-<<<<<<< Updated upstream
       <div class="quiz-card-header">
         <span class="quiz-q-num">Q${idx + 1}</span>
         <span style="font-size:13px">${isCorrect ? '✅' : '❌'}</span>
@@ -2818,12 +1589,6 @@ function _showResults(correct, total) {
       </div>
       <div class="quiz-explanation visible">💡 ${q.explanation}</div>
     `;
-=======
-      <div class="quiz-card-header"><span class="quiz-q-num">Q${idx+1}</span><span style="font-size:13px">${ok ? 'Correct' : 'Incorrect'}</span><span class="quiz-q-text">${q.question}</span></div>
-      <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px">
-        Your answer: <strong style="color:var(--text-primary)">${[...ua].join(', ') || 'No answer'}</strong> | Correct: <strong style="color:var(--accent)">${q.correct.join(', ')}</strong></div>
-      <div class="quiz-explanation visible">Explanation: ${q.explanation}</div>`;
->>>>>>> Stashed changes
     review.appendChild(card);
   });
 
@@ -2833,37 +1598,9 @@ function _showResults(correct, total) {
 }
 
 function closeQuiz() {
-<<<<<<< Updated upstream
   const view = document.getElementById('quiz-view');
   if (view) view.style.display = 'none';
   _currentQuiz   = null;
   _quizAnswers   = {};
   _quizSubmitted = false;
 }
-=======
-  const v = document.getElementById('quiz-view'); if (v) v.style.display = 'none';
-  _currentQuiz = null; _quizAnswers = {}; _quizSubmitted = false;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
->>>>>>> Stashed changes
