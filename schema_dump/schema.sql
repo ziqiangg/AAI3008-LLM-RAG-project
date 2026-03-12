@@ -14,10 +14,20 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Table: folders
+CREATE TABLE IF NOT EXISTS folders (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_user_folder UNIQUE(user_id, name)
+);
+
 -- Table: documents
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
     filename VARCHAR(255) NOT NULL,
     file_path VARCHAR(500) NOT NULL,
     file_type VARCHAR(50), -- e.g., 'pdf', 'docx'
@@ -81,13 +91,19 @@ CREATE INDEX idx_document_chunks_embedding
 ON document_chunks 
 USING hnsw (embedding vector_cosine_ops);
 
--- Optional: Index for faster document lookup by user
+-- Index for faster folder lookup by user
+CREATE INDEX idx_folders_user_id ON folders (user_id);
+
+-- Index for faster document lookup by user
 CREATE INDEX idx_documents_user_id ON documents (user_id);
 
--- Optional: Index for faster chunk lookup by document
+-- Index for faster document lookup by folder
+CREATE INDEX idx_documents_folder_id ON documents (folder_id);
+
+-- Index for faster chunk lookup by document
 CREATE INDEX idx_document_chunks_document_id ON document_chunks (document_id);
 
--- Optional: Index for faster session lookup by user
+-- Index for faster session lookup by user
 CREATE INDEX idx_sessions_user_id ON sessions (user_id);
 
 COMMIT;

@@ -92,26 +92,283 @@ body {
 .sidebar-section-title {
   font-size: 11px; text-transform: uppercase;
   letter-spacing: 0.08em; color: var(--text-muted);
-  padding: 10px 4px 4px;
-  margin-top: 18px;
-  margin-bottom: 10px;
+  padding: 4px 4px 4px;
+  margin-top: 6px;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
+/* Add Folder Button */
+#add-folder-btn {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 14px; cursor: pointer;
+  font-size: 13px; font-weight: 500;
+  transition: background 0.2s; width: 100%;
+  margin-bottom: 2px;
+}
 
-#docs-list {
-  flex: 1; overflow-y: auto;
+#add-folder-btn:hover { background: var(--bg-input); }
+
+#add-doc-btn {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 14px; cursor: pointer;
+  font-size: 13px; font-weight: 500;
+  transition: background 0.2s; width: 100%;
+  margin-bottom: 1px;
+}
+
+#add-doc-btn:hover { background: var(--bg-input); }
+
+/* Docs Tree Wrapper with Scroll */
+.docs-tree-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: calc(100vh - 380px);
+  margin-bottom: 12px;
+}
+
+#docs-list, #docs-tree {
   display: flex; flex-direction: column; gap: 4px;
 }
 
+/* ══════════════════════════════════════════════════════
+   FOLDER SYSTEM STYLES
+══════════════════════════════════════════════════════ */
+
+/* Filter Badge */
+.filter-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 0 4px 8px 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.filter-badge:hover {
+  background: var(--hover-bg);
+}
+
+.filter-badge.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.filter-icon {
+  font-size: 16px;
+}
+
+#filter-badge-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-clear {
+  opacity: 0.8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.filter-clear:hover {
+  opacity: 1;
+  background: rgba(0,0,0,0.1);
+}
+
+/* Folder Group */
+.folder-group {
+  margin-bottom: 6px;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: background 0.2s;
+}
+
+.folder-group.filtered {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid var(--primary);
+  padding-left: 4px;
+}
+
+/* Folder Header */
+.folder-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: 6px;
+}
+
+/* Folder Checkbox */
+.folder-checkbox {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.folder-header:hover {
+  background: var(--bg-input);
+}
+
+.folder-group.filtered .folder-header {
+  font-weight: 600;
+}
+
+.folder-header.unfiled-header {
+  cursor: default;
+}
+
+.folder-header.unfiled-header:hover {
+  background: var(--bg-input);
+}
+
+.folder-arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+  color: var(--text-muted);
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+}
+
+.folder-arrow.open {
+  transform: rotate(90deg);
+}
+
+/* Removed folder-icon - no longer used */
+
+.folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-input);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: normal;
+}
+
+.folder-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.folder-header:hover .folder-actions {
+  opacity: 1;
+}
+
+.folder-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.folder-action-btn:hover {
+  opacity: 1;
+}
+
+.folder-del {
+  color: var(--text-muted);
+  font-size: 14px;
+  opacity: 0;
+}
+
+.folder-header:hover .folder-del {
+  opacity: 0.7;
+}
+
+.folder-del:hover {
+  opacity: 1 !important;
+  color: var(--danger);
+}
+
+/* Unfiled Folder Select */
+.unfiled-folder-select {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.unfiled-folder-select:hover {
+  border-color: var(--text-muted);
+}
+
+.unfiled-folder-select:focus {
+  border-color: var(--accent);
+}
+
+/* Folder Documents Container */
+.folder-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 24px;
+  margin-top: 2px;
+  transition: max-height 0.3s ease, opacity 0.3s ease;
+  max-height: 2000px;
+  opacity: 1;
+}
+
+.folder-docs.collapsed {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  margin-top: 0;
+}
+
+/* Document Items */
 .doc-item {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 10px; border-radius: 6px;
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 6px;
   font-size: 12px; color: var(--text-muted);
   cursor: pointer; transition: background 0.15s;
 }
 
 .doc-item:hover { background: var(--bg-input); color: var(--text-primary); }
-.doc-item .doc-icon { font-size: 14px; flex-shrink: 0; }
+/* Removed doc-icon - no longer used */
 
 .doc-item .doc-name {
   white-space: nowrap; overflow: hidden;
@@ -714,6 +971,272 @@ body {
 #auth-error {
   font-size: 12px; color: var(--danger);
   text-align: center; min-height: 18px;
+}
+
+/* Folder Modals */
+.modal-overlay, #create-folder-overlay, #rename-folder-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.65);
+  z-index: 200;
+  align-items: center; justify-content: center;
+}
+
+#create-folder-modal, #rename-folder-modal {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 14px; padding: 32px 28px;
+  width: 100%; max-width: 420px;
+  display: flex; flex-direction: column; gap: 20px;
+  animation: fadeIn 0.2s ease;
+}
+
+#create-folder-modal .modal-header button,
+#rename-folder-modal .modal-header button {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1;
+}
+
+#create-folder-modal .modal-header button:hover,
+#rename-folder-modal .modal-header button:hover {
+  color: var(--text-primary);
+}
+
+.modal-content {
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+.modal-content label {
+  font-size: 13px; font-weight: 600;
+  color: var(--text-secondary); margin-bottom: -6px;
+}
+
+.modal-content input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px;
+  color: var(--text-primary); font-size: 14px; outline: none;
+  transition: border-color 0.2s;
+}
+
+.modal-content input:focus {
+  border-color: var(--accent);
+}
+
+.modal-content input::placeholder {
+  color: var(--text-muted);
+}
+
+.modal-actions {
+  display: flex; gap: 10px; justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.modal-actions button {
+  padding: 9px 18px; border-radius: 8px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer; border: none;
+  transition: all 0.2s;
+}
+
+.modal-actions button:first-child {
+  background: var(--bg-input); color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.modal-actions button:first-child:hover {
+  background: var(--surface); color: var(--text-primary);
+}
+
+.modal-actions button:last-child {
+  background: var(--accent); color: white;
+}
+
+.modal-actions button:last-child:hover {
+  background: var(--accent-hover);
+}
+
+.modal-error {
+  font-size: 12px; color: var(--danger);
+  min-height: 18px; margin-top: -6px;
+}
+
+/* Link Folder Popup */
+.link-folder-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  z-index: 250;
+  min-width: 280px;
+  max-width: 320px;
+}
+
+.popup-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.popup-header button {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.popup-header button:hover {
+  color: var(--text-primary);
+}
+
+.popup-body {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.popup-body select {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.popup-body select option {
+  padding: 8px;
+}
+
+.popup-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.popup-actions button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.popup-actions button:first-child {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.popup-actions button:first-child:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.popup-actions button:last-child {
+  background: var(--accent);
+  color: white;
+}
+
+.popup-actions button:last-child:hover {
+  background: var(--accent-hover);
+}
+
+/* Link Folder Selector */
+.link-folder-selector {
+  margin: 12px 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.link-folder-selector label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+#link-folder-select {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#link-folder-select:hover {
+  border-color: var(--text-muted);
+}
+
+#link-folder-select:focus {
+  border-color: var(--accent);
+}
+
+/* Folder Button Grid (for modals) */
+.folder-button-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.folder-select-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.folder-select-btn:hover {
+  background: var(--bg-input);
+  border-color: var(--text-muted);
+}
+
+.folder-select-btn:active {
+  background: var(--hover-bg);
 }
 
 /* Toast */

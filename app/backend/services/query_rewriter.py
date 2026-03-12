@@ -328,12 +328,18 @@ Output format (numbered list, one per line):"""
             
             sub_questions = self._parse_numbered_variants(response.text)
             
-            # If decomposition didn't work or only 1 question, return original
-            if len(sub_questions) <= 1:
+            # If no sub-questions generated, return original
+            if len(sub_questions) == 0:
+                logger.debug(f"[QueryRewriter] No sub-questions generated")
+                return [query]
+            
+            # If only 1 sub-question and it's identical to original, return original
+            if len(sub_questions) == 1 and sub_questions[0].strip().lower() == query.strip().lower():
                 logger.debug(f"[QueryRewriter] Query is already focused, no decomposition needed")
                 return [query]
             
-            logger.info(f"[QueryRewriter] Decomposed into {len(sub_questions)} sub-questions")
+            # Either 2+ sub-questions, or 1 improved/clarified sub-question
+            logger.info(f"[QueryRewriter] Decomposed into {len(sub_questions)} sub-question(s)")
             for i, sq in enumerate(sub_questions, 1):
                 logger.debug(f"  Sub-Q{i}: {sq}")
             

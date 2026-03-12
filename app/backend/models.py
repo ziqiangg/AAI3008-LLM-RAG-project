@@ -25,6 +25,7 @@ class User(Base):
     
     # Relationships
     documents = relationship("Document", back_populates="user", cascade="all, delete-orphan")
+    folders = relationship("Folder", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="user", cascade="all, delete-orphan")
     
     def to_dict(self):
@@ -41,12 +42,39 @@ class User(Base):
         return f"<User(id={self.id}, username='{self.username}', email='{self.email}')>"
 
 
+class Folder(Base):
+    """Folder model for organizing documents"""
+    __tablename__ = 'folders'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
+    name = Column(String(255), nullable=False)
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    
+    # Relationships
+    user = relationship("User", back_populates="folders")
+    documents = relationship("Document", back_populates="folder")
+    
+    def to_dict(self):
+        """Convert model to dictionary"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+    
+    def __repr__(self):
+        return f"<Folder(id={self.id}, name='{self.name}', user_id={self.user_id})>"
+
+
 class Document(Base):
     """Document model for storing uploaded document metadata"""
     __tablename__ = 'documents'
     
     id          = Column(Integer, primary_key=True)
     user_id     = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
+    folder_id   = Column(Integer, ForeignKey('folders.id', ondelete='SET NULL'), nullable=True)
     filename    = Column(String(255), nullable=False)
     file_path   = Column(String(500), nullable=False)
     file_type   = Column(String(50))  # e.g., 'pdf', 'docx'
@@ -57,6 +85,7 @@ class Document(Base):
     
     # Relationships
     user = relationship("User", back_populates="documents")
+    folder = relationship("Folder", back_populates="documents")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")
     
     def to_dict(self):
@@ -64,6 +93,7 @@ class Document(Base):
         return {
             'id': self.id,
             'user_id': self.user_id,
+            'folder_id': self.folder_id,
             'filename': self.filename,
             'file_path': self.file_path,
             'file_type': self.file_type,

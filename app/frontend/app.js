@@ -19,11 +19,117 @@ let currentSession = null;      // active session id
 let toastTimeout   = null;      // toast notification timer
 let stageTimer     = null;      // loading stage progress timer
 
+// ── Folder & Document State ───────────────────
+let folders = [];               // [{id, name, document_count, created_at}]
+let documents = [];             // [{id, filename, folder_id, ...}]
+let activeFilterFolders = [];   // [folder_id, ...] - persistent folder filter
+let collapsedFolders = new Set(); // Set of collapsed folder IDs
+const FILTER_STORAGE_KEY = 'rag_folder_filter';
+const COLLAPSED_STORAGE_KEY = 'rag_collapsed_folders';
+
 // ── Bootstrap ─────────────────────────────────
 window.addEventListener('load', () => {
+  loadFilterState();
+  loadCollapsedState();
   loadDocuments();
+  loadFolders();
   if (currentToken) restoreSession();
+  
+  // Close folder modals when clicking outside
+  document.getElementById('create-folder-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'create-folder-overlay') closeCreateFolderModal();
+  });
+  
+  document.getElementById('rename-folder-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'rename-folder-overlay') closeRenameFolderModal();
+  });
+  
+  // Close link folder popup when clicking outside
+  document.getElementById('link-folder-popup')?.addEventListener('click', (e) => {
+    if (e.target.id === 'link-folder-popup') closeLinkFolderPopup();
+  });
+  
+  // Close document folder popup when clicking outside
+  document.getElementById('document-folder-popup')?.addEventListener('click', (e) => {
+    if (e.target.id === 'document-folder-popup') closeDocumentFolderModal();
+  });
 });
+
+// ══════════════════════════════════════════════
+// FOLDER FILTER STATE MANAGEMENT
+// ══════════════════════════════════════════════
+
+function loadFilterState() {
+  try {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      activeFilterFolders = parsed.folder_ids || [];
+    }
+  } catch (e) {
+    console.error('Failed to load filter state:', e);
+  }
+}
+
+function saveFilterState() {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+      folder_ids: activeFilterFolders,
+      timestamp: Date.now()
+    }));
+  } catch (e) {
+    console.error('Failed to save filter state:', e);
+  }
+}
+
+function clearFilter() {
+  activeFilterFolders = [];
+  saveFilterState();
+  updateFilterBadge();
+  renderDocumentsTree();
+}
+
+function loadCollapsedState() {
+  try {
+    const saved = localStorage.getItem(COLLAPSED_STORAGE_KEY);
+    if (saved) {
+      const array = JSON.parse(saved);
+      collapsedFolders = new Set(array);
+    }
+  } catch (e) {
+    console.error('Failed to load collapsed state:', e);
+  }
+}
+
+function saveCollapsedState() {
+  try {
+    localStorage.setItem(COLLAPSED_STORAGE_KEY, JSON.stringify([...collapsedFolders]));
+  } catch (e) {
+    console.error('Failed to save collapsed state:', e);
+  }
+}
+
+function getFilteredDocumentIds() {
+  // If folders/documents are filtered, return matching document IDs
+  if (activeFilterFolders.length > 0) {
+    const docIds = documents
+      .filter(doc => {
+        // Check if document is in a filtered folder
+        if (doc.folder_id && activeFilterFolders.includes(doc.folder_id)) {
+          return true;
+        }
+        // Check if this specific unfiled document is filtered
+        if (!doc.folder_id && activeFilterFolders.includes(`unfiled-${doc.id}`)) {
+          return true;
+        }
+        return false;
+      })
+      .map(doc => doc.id);
+    return docIds.length > 0 ? docIds : null;
+  }
+  
+  return null;  // null = use all documents
+}
 
 // ══════════════════════════════════════════════
 // HEALTH CHECK (Optional - removed from bootstrap)
@@ -103,6 +209,7 @@ function setActiveSource(i) {
 // ══════════════════════════════════════════════
 function openAuthModal() {
   if (currentUser) { showUserMenu(); return; }
+  closeAllModals();
   document.getElementById('modal-overlay').classList.add('visible');
   document.getElementById('auth-error').textContent = '';
 }
@@ -166,6 +273,7 @@ async function submitAuth() {
     updateAuthButton();
     loadSessions();
     loadDocuments();
+    loadFolders();
     showToast('👋', `Welcome, ${currentUser.username}!`, 'success');
   } catch {
     errEl.textContent = 'Could not reach the backend.';
@@ -183,6 +291,7 @@ async function restoreSession() {
       currentUser = data.user;
       updateAuthButton();
       loadSessions();
+      loadFolders();
     } else {
       logout();
     }
@@ -457,8 +566,9 @@ function triggerSidebarUpload() {
   document.getElementById('sidebar-file-input').click();
 }
 let pendingLinks = [];
+let pendingLinkUrl = null; // Temporary storage for link before folder selection
 
-function addLink() {
+function addLinkWithFolder() {
   const inp = document.getElementById("link-input");
   const url = (inp.value || "").trim();
   if (!url) return;
@@ -488,11 +598,11 @@ function addLink() {
     );
     
     if (!isTrusted) {
-      // Add with warning but don't block
-      pendingLinks.push(url);
+      // Store URL temporarily and show folder popup
+      pendingLinkUrl = url;
       inp.value = "";
-      renderLinkList();
-      showToast("⚠️", `Added link (domain may not be trusted: ${hostname})`, "warning");
+      openLinkFolderPopup();
+      showToast("⚠️", `Domain may not be trusted: ${hostname}. Select folder to add.`, "warning");
       return;
     }
     
@@ -501,9 +611,55 @@ function addLink() {
     return;
   }
   
-  pendingLinks.push(url);
+  // Store URL temporarily and show folder popup
+  pendingLinkUrl = url;
   inp.value = "";
-  renderLinkList();
+  
+  // Show folder selector popup
+  openLinkFolderPopup();
+}
+
+function addLink() {
+  addLinkWithFolder();
+}
+
+function openLinkFolderPopup() {
+  closeAllModals();
+  const popup = document.getElementById('link-folder-popup');
+  const container = document.getElementById('link-folder-buttons');
+  
+  // Create buttons for each folder + Unfiled
+  let html = `<button class="folder-select-btn" onclick="selectLinkFolder(null)">Unfiled</button>`;
+  folders.forEach(folder => {
+    html += `<button class="folder-select-btn" onclick="selectLinkFolder(${folder.id})">${escapeHtml(folder.name)}</button>`;
+  });
+  container.innerHTML = html;
+  
+  popup.style.display = 'block';
+}
+
+function closeLinkFolderPopup() {
+  document.getElementById('link-folder-popup').style.display = 'none';
+  // Clear pending link if user closes without selecting
+  if (pendingLinkUrl) {
+    showToast("⚠️", "Link not added - no folder selected", "warning");
+    pendingLinkUrl = null;
+  }
+}
+
+function selectLinkFolder(folderId) {
+  // Store selected folder for ingestion
+  window._selectedLinkFolderId = folderId;
+  
+  // Add the pending link to the list now that folder is selected
+  if (pendingLinkUrl) {
+    pendingLinks.push(pendingLinkUrl);
+    pendingLinkUrl = null;
+    renderLinkList();
+  }
+  
+  closeLinkFolderPopup();
+  showToast("✅", folderId === null ? "Link added to unfiled" : "Link added to folder", "success");
 }
 
 function removeLink(i) {
@@ -530,12 +686,27 @@ async function ingestLinks() {
     showToast("🔗", "No links added.", "warning");
     return;
   }
+  
+  // Check if folder was selected
+  if (window._selectedLinkFolderId === undefined) {
+    showToast("⚠️", "Please select a folder for the links first.", "warning");
+    openLinkFolderPopup();
+    return;
+  }
+  
+  // Get selected folder or use null for unfiled
+  const folderId = window._selectedLinkFolderId;
+  
   showToast("⏳", "Ingesting links…", "");
 
   const res = await fetch(`${API}/api/links/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ urls: pendingLinks, user_id: currentUser.id })
+    body: JSON.stringify({ 
+      urls: pendingLinks, 
+      user_id: currentUser.id,
+      folder_id: folderId
+    })
   });
   const data = await res.json();
   if (!res.ok) {
@@ -568,8 +739,9 @@ async function ingestLinks() {
   }
   
   pendingLinks = [];
+  window._selectedLinkFolderId = undefined;
   renderLinkList();
-  loadDocuments(); // refresh sidebar
+  await loadDocuments(); // refresh sidebar
 }
 async function onSidebarFileSelected(event) {
   const file = event.target.files[0];
@@ -595,6 +767,11 @@ async function uploadDocumentFromSidebar(file) {
     return;
   }
   formData.append('user_id', currentUser.id);
+  
+  // Add folder_id if selected
+  if (window._selectedDocumentFolderId !== undefined && window._selectedDocumentFolderId !== null) {
+    formData.append('folder_id', window._selectedDocumentFolderId);
+  }
 
   try {
     const res  = await fetch(`${API}/api/documents/upload`, {
@@ -609,6 +786,7 @@ async function uploadDocumentFromSidebar(file) {
     }
 
     showToast('✅', `${file.name} ingested!`, 'success');
+    window._selectedDocumentFolderId = undefined;
     loadDocuments();  // refresh left sidebar document list
   } catch (e) {
     showToast('❌', 'Upload failed — backend unreachable.', 'error');
@@ -620,48 +798,493 @@ async function loadDocuments() {
   try {
     const res  = await fetch(`${API}/api/documents/`);
     const data = await res.json();
-    const list = document.getElementById('docs-list');
-    const docs = data.documents || data;
+    documents = data.documents || data || [];
 
     // Build maps for quick lookup by Sources click
     window._docsById = {};
     window._docIdByFilename = {};
-    (docs || []).forEach(d => {
+    documents.forEach(d => {
       window._docsById[d.id] = d;
       if (d.filename) window._docIdByFilename[d.filename] = d.id;
     });
 
-    if (!docs?.length) {
-      list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px 4px">No documents yet</div>`;
-      return;
-    }
-
-    list.innerHTML = docs.map(doc => {
-      // Handle subject as array or fallback to General
-      const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : ['General']);
-      const primarySubject = subjects[0] || 'General';
-      const subjectColor = SUBJECT_COLORS[primarySubject] || SUBJECT_COLORS['General'];
-      
-      // Create subject badge with click-to-edit
-      const subjectBadge = `<span class="subject-badge" 
-        style="background:${subjectColor}20; color:${subjectColor}; border:1px solid ${subjectColor}; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; margin-top:2px; display:inline-block;" 
-        onclick="event.stopPropagation(); editDocumentSubject(${doc.id}, ${JSON.stringify(subjects).replace(/"/g, '&quot;')})" 
-        title="Click to edit subject">${primarySubject}${subjects.length > 1 ? ` +${subjects.length-1}` : ''}</span>`;
-      
-      return `
-      <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
-        <div style="flex:1; min-width:0;">
-          <div style="display:flex; align-items:center; gap:6px;">
-            <span class="doc-icon">📄</span>
-            <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
-          </div>
-          ${subjectBadge}
-        </div>
-        <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
-      </div>`;
-    }).join('');
+    renderDocumentsTree();
   } catch(e) {
     console.warn('Could not load documents', e);
+  }
+}
+
+async function loadFolders() {
+  if (!currentUser) {
+    folders = [];
+    return;
+  }
+  
+  try {
+    const res = await authFetch('/api/folders/');
+    const data = await res.json();
+    
+    if (res.ok) {
+      folders = data.folders || [];
+      renderDocumentsTree();
+      updateFilterBadge();
+      populateLinkFolderSelector();
+    }
+  } catch (err) {
+    console.error('Failed to load folders:', err);
+  }
+}
+
+function renderDocumentsTree() {
+  const tree = document.getElementById('docs-tree');
+  if (!tree) return;
+
+  if (!documents || documents.length === 0) {
+    tree.innerHTML = `<div style="font-size:12px; color:var(--text-muted); padding:8px 4px">No documents yet</div>`;
+    return;
+  }
+
+  // Group documents by folder
+  const byFolder = {};
+  const unfiled = [];
+  
+  documents.forEach(doc => {
+    if (doc.folder_id) {
+      if (!byFolder[doc.folder_id]) byFolder[doc.folder_id] = [];
+      byFolder[doc.folder_id].push(doc);
+    } else {
+      unfiled.push(doc);
+    }
+  });
+
+  let html = '';
+
+  // Render folders
+  folders.forEach(folder => {
+    const folderDocs = byFolder[folder.id] || [];
+    const isCollapsed = collapsedFolders.has(folder.id);
+    const isFiltered = activeFilterFolders.includes(folder.id);
+    const filterClass = isFiltered ? 'filtered' : '';
+    
+    html += `
+    <div class="folder-group ${filterClass}" data-folder-id="${folder.id}">
+      <div class="folder-header" onclick="handleFolderClick(event, ${folder.id})">
+        <input type="checkbox" class="folder-checkbox" ${isFiltered ? 'checked' : ''} 
+               onclick="event.stopPropagation(); toggleFolderFilter(${folder.id})" />
+        <span class="folder-arrow ${isCollapsed ? '' : 'open'}" onclick="event.stopPropagation(); toggleFolder(${folder.id})">▶</span>
+        <span class="folder-name">${escapeHtml(folder.name)}</span>
+        <span class="folder-count">${folderDocs.length}</span>
+        <div class="folder-actions" onclick="event.stopPropagation()">
+          <button class="folder-action-btn" onclick="openRenameFolderModal(${folder.id}, '${escapeHtml(folder.name).replace(/'/g, '\\\'')}')" title="Rename">✏️</button>
+          <button class="folder-action-btn folder-del" onclick="deleteFolder(${folder.id}, '${escapeHtml(folder.name).replace(/'/g, '\\\'')}')" title="Delete">✕</button>
+        </div>
+      </div>
+      <div class="folder-docs ${isCollapsed ? 'collapsed' : ''}">
+        ${folderDocs.map(doc => renderDocItem(doc)).join('')}
+      </div>
+    </div>`;
+  });
+
+  // Render unfiled documents directly without folder grouping
+  if (unfiled.length > 0) {
+    html += unfiled.map(doc => renderDocItem(doc, true)).join('');
+  }
+
+  tree.innerHTML = html;
+}
+
+function renderDocItem(doc, isUnfiled = false) {
+  const subjects = Array.isArray(doc.subject) ? doc.subject : (doc.subject ? [doc.subject] : ['General']);
+  const primarySubject = subjects[0] || 'General';
+  const subjectColor = SUBJECT_COLORS[primarySubject] || SUBJECT_COLORS['General'];
+  
+  const subjectBadge = `<span class="subject-badge" 
+    style="background:${subjectColor}20; color:${subjectColor}; border:1px solid ${subjectColor}; padding:1px 4px; border-radius:3px; font-size:9px; font-weight:600; cursor:pointer; margin-top:2px; display:inline-block;" 
+    onclick="event.stopPropagation(); editDocumentSubject(${doc.id}, ${JSON.stringify(subjects).replace(/"/g, '&quot;')})" 
+    title="Click to edit subject">${primarySubject}${subjects.length > 1 ? ` +${subjects.length-1}` : ''}</span>`;
+  
+  // Add checkbox for unfiled documents
+  const unfiledDocId = `unfiled-${doc.id}`;
+  const isFiltered = isUnfiled && activeFilterFolders.includes(unfiledDocId);
+  const checkbox = isUnfiled ? `<input type="checkbox" class="doc-checkbox" ${isFiltered ? 'checked' : ''} 
+    onclick="event.stopPropagation(); toggleUnfiledDocFilter(${doc.id})" 
+    style="width: 14px; height: 14px; margin-right: 6px; cursor: pointer; flex-shrink: 0;" />` : '';
+  
+  return `
+  <div class="doc-item" onclick="previewDoc(${doc.id}, '${escapeHtml(doc.filename)}')">
+    ${checkbox}
+    <div style="flex:1; min-width:0;">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span class="doc-name" title="${escapeHtml(doc.filename)}">${escapeHtml(doc.filename)}</span>
+      </div>
+      ${subjectBadge}
+    </div>
+    <button class="doc-del" onclick="deleteDoc(${doc.id}, event)" title="Delete">✕</button>
+  </div>`;
+}
+
+function toggleFolder(folderId) {
+  if (collapsedFolders.has(folderId)) {
+    collapsedFolders.delete(folderId);
+  } else {
+    collapsedFolders.add(folderId);
+  }
+  saveCollapsedState();
+  renderDocumentsTree();
+}
+
+function handleFolderClick(event, folderId) {
+  // Folder clicking disabled - only checkboxes control filtering
+  // If clicking arrow, toggle collapse
+  if (event.target.classList.contains('folder-arrow')) return;
+  
+  // If clicking checkbox, it's already handled
+  if (event.target.classList.contains('folder-checkbox')) return;
+  
+  // If clicking action buttons, don't do anything
+  if (event.target.closest('.folder-actions')) return;
+  
+  // Otherwise, do nothing - only checkboxes control filtering
+}
+
+function updateFilterBadge() {
+  const badge = document.getElementById('filter-badge');
+  const text = document.getElementById('filter-badge-text');
+  const clear = badge?.querySelector('.filter-clear');
+  
+  if (!badge || !text) return;
+  
+  // Show badge only if there's a filter active
+  if (activeFilterFolders.length > 0) {
+    badge.style.display = 'flex';
+    
+    const folderNames = activeFilterFolders
+      .map(id => {
+        // Handle unfiled documents
+        if (id.startsWith('unfiled-')) {
+          const docId = parseInt(id.replace('unfiled-', ''));
+          const doc = documents.find(d => d.id === docId);
+          // Truncate long filenames
+          if (doc) {
+            const filename = doc.filename;
+            return filename.length > 20 ? filename.substring(0, 17) + '...' : filename;
+          }
+          return '?';
+        }
+        // Handle regular folders
+        return folders.find(f => f.id === id)?.name || '?';
+      })
+      .filter(Boolean);
+    
+    if (folderNames.length === 1) {
+      text.textContent = folderNames[0];
+    } else if (folderNames.length === 2) {
+      text.textContent = folderNames.join(', ');
+    } else {
+      text.textContent = `${folderNames.length} items`;
+    }
+    
+    badge.classList.add('active');
+    if (clear) clear.style.display = 'inline-block';
+  } else {
+    // Hide badge when no filter
+    badge.style.display = 'none';
+    badge.classList.remove('active');
+    if (clear) clear.style.display = 'none';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// FOLDER MANAGEMENT UI
+// ══════════════════════════════════════════════════════════
+
+function toggleFolderFilter(folderId) {
+  const idx = activeFilterFolders.indexOf(folderId);
+  if (idx >= 0) {
+    // Remove from filter
+    activeFilterFolders.splice(idx, 1);
+  } else {
+    // Add to filter (multiple folder support)
+    activeFilterFolders.push(folderId);
+  }
+  saveFilterState();
+  renderDocumentsTree();
+  updateFilterBadge();
+}
+
+function toggleUnfiledDocFilter(docId) {
+  const unfiledDocId = `unfiled-${docId}`;
+  const idx = activeFilterFolders.indexOf(unfiledDocId);
+  if (idx >= 0) {
+    // Remove from filter
+    activeFilterFolders.splice(idx, 1);
+  } else {
+    // Add to filter
+    activeFilterFolders.push(unfiledDocId);
+  }
+  saveFilterState();
+  renderDocumentsTree();
+  updateFilterBadge();
+}
+
+function closeAllModals() {
+  document.getElementById('create-folder-overlay').style.display = 'none';
+  document.getElementById('rename-folder-overlay').style.display = 'none';
+  document.getElementById('document-folder-popup').style.display = 'none';
+  document.getElementById('link-folder-popup').style.display = 'none';
+  document.getElementById('modal-overlay').classList.remove('visible');
+  document.getElementById('quiz-modal-overlay').classList.remove('visible');
+}
+
+function openCreateFolderModal() {
+  if (!currentUser) {
+    showToast('🔒', 'Please log in to create folders.', 'error');
+    return;
+  }
+  
+  closeAllModals();
+  const overlay = document.getElementById('create-folder-overlay');
+  const input = document.getElementById('new-folder-name');
+  const error = document.getElementById('folder-create-error');
+  
+  overlay.style.display = 'flex';
+  input.value = '';
+  error.textContent = '';
+  setTimeout(() => input.focus(), 100);
+}
+
+function closeCreateFolderModal() {
+  document.getElementById('create-folder-overlay').style.display = 'none';
+}
+
+async function submitCreateFolder() {
+  const name = document.getElementById('new-folder-name').value.trim();
+  const errorEl = document.getElementById('folder-create-error');
+  
+  if (!name) {
+    errorEl.textContent = 'Please enter a folder name.';
+    return;
+  }
+  
+  try {
+    const res = await authFetch('/api/folders/', {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Failed to create folder.';
+      return;
+    }
+    
+    closeCreateFolderModal();
+    await loadFolders();
+    showToast('✅', `Folder "${name}" created successfully.`, 'success');
+  } catch (err) {
+    errorEl.textContent = 'Backend unreachable.';
+  }
+}
+
+function openRenameFolderModal(folderId, currentName) {
+  closeAllModals();
+  const overlay = document.getElementById('rename-folder-overlay');
+  const input = document.getElementById('rename-folder-name');
+  const idInput = document.getElementById('rename-folder-id');
+  const error = document.getElementById('folder-rename-error');
+  
+  overlay.style.display = 'flex';
+  input.value = currentName;
+  idInput.value = folderId;
+  error.textContent = '';
+  setTimeout(() => input.focus(), 100);
+}
+
+function closeRenameFolderModal() {
+  document.getElementById('rename-folder-overlay').style.display = 'none';
+}
+
+async function submitRenameFolder() {
+  const name = document.getElementById('rename-folder-name').value.trim();
+  const folderId = parseInt(document.getElementById('rename-folder-id').value);
+  const errorEl = document.getElementById('folder-rename-error');
+  
+  if (!name) {
+    errorEl.textContent = 'Please enter a folder name.';
+    return;
+  }
+  
+  try {
+    const res = await authFetch(`/api/folders/${folderId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name })
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      errorEl.textContent = data.error || 'Failed to rename folder.';
+      return;
+    }
+    
+    closeRenameFolderModal();
+    await loadFolders();
+    showToast('✅', `Folder renamed to "${name}".`, 'success');
+  } catch (err) {
+    errorEl.textContent = 'Backend unreachable.';
+  }
+}
+
+async function deleteFolder(folderId, folderName) {
+  if (!confirm(`Delete folder "${folderName}"? Documents will be moved to unfiled.`)) {
+    return;
+  }
+  
+  try {
+    const res = await authFetch(`/api/folders/${folderId}`, {
+      method: 'DELETE'
+    });
+    
+    const data = await res.json();
+    
+    if (!res.ok) {
+      showToast('❌', data.error || 'Failed to delete folder.', 'error');
+      return;
+    }
+    
+    // Remove from active filter if it was filtered
+    const idx = activeFilterFolders.indexOf(folderId);
+    if (idx >= 0) {
+      activeFilterFolders.splice(idx, 1);
+      saveFilterState();
+    }
+    
+    await loadFolders();
+    await loadDocuments();
+    showToast('✅', `Folder "${folderName}" deleted.`, 'success');
+  } catch (err) {
+    showToast('❌', 'Backend unreachable.', 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// DOCUMENT FOLDER SELECTION
+// ══════════════════════════════════════════════════════════
+
+function openDocumentFolderModal() {
+  if (!currentUser) {
+    showToast('🔒', 'Please log in to upload documents.', 'error');
+    return;
+  }
+  
+  closeAllModals();
+  const popup = document.getElementById('document-folder-popup');
+  const container = document.getElementById('document-folder-buttons');
+  
+  // Create buttons for each folder + Unfiled
+  let html = `<button class="folder-select-btn" onclick="selectDocumentFolder(null)">Unfiled</button>`;
+  if (folders && folders.length > 0) {
+    folders.forEach(folder => {
+      html += `<button class="folder-select-btn" onclick="selectDocumentFolder(${folder.id})">${escapeHtml(folder.name)}</button>`;
+    });
+  }
+  container.innerHTML = html;
+  
+  popup.style.display = 'block';
+}
+
+function closeDocumentFolderModal() {
+  document.getElementById('document-folder-popup').style.display = 'none';
+}
+
+function selectDocumentFolder(folderId) {
+  // Store selected folder and trigger file input
+  window._selectedDocumentFolderId = folderId;
+  closeDocumentFolderModal();
+  document.getElementById('sidebar-file-input').click();
+}
+
+async function moveDocumentToFolder(selectElement) {
+  const folderId = parseInt(selectElement.value);
+  
+  if (!folderId) {
+    selectElement.selectedIndex = 0;
+    return;
+  }
+  
+  // Get all unfiled documents
+  const unfiledDocs = documents.filter(d => !d.folder_id);
+  
+  if (unfiledDocs.length === 0) {
+    showToast('ℹ️', 'No unfiled documents to move.', 'info');
+    selectElement.selectedIndex = 0;
+    return;
+  }
+  
+  const folderName = folders.find(f => f.id === folderId)?.name || 'folder';
+  
+  if (!confirm(`Move all ${unfiledDocs.length} unfiled document(s) to "${folderName}"?`)) {
+    selectElement.selectedIndex = 0;
+    return;
+  }
+  
+  try {
+    // Move all unfiled documents to the selected folder
+    const movePromises = unfiledDocs.map(doc => 
+      authFetch(`/api/documents/${doc.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ folder_id: folderId })
+      })
+    );
+    
+    await Promise.all(movePromises);
+    
+    await loadFolders();
+    await loadDocuments();
+    showToast('✅', `Moved ${unfiledDocs.length} document(s) to "${folderName}".`, 'success');
+  } catch (err) {
+    showToast('❌', 'Failed to move documents.', 'error');
+  } finally {
+    selectElement.selectedIndex = 0;
+  }
+}
+
+function toggleFilterDropdown() {
+  // Placeholder for future dropdown menu
+  // For now, clicking badge shows which folders are active
+  if (activeFilterFolders.length > 0) {
+    const folderNames = activeFilterFolders
+      .map(id => folders.find(f => f.id === id)?.name)
+      .filter(Boolean)
+      .join(', ');
+    alert(`Active filter: ${folderNames}\n\nClick folder name to filter, Ctrl+click for multi-select.`);
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// LINK FOLDER SELECTOR
+// ══════════════════════════════════════════════════════════
+
+function populateLinkFolderSelector() {
+  const container = document.getElementById('link-folder-selector-container');
+  const select = document.getElementById('link-folder-select');
+  
+  if (!container || !select) return;
+  
+  // Show selector only if there are folders
+  if (folders.length > 0) {
+    container.style.display = 'block';
+    
+    // Keep "Unfiled" option and add folder options
+    const unfiledOption = '<option value="">Unfiled</option>';
+    const folderOptions = folders
+      .map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`)
+      .join('');
+    
+    select.innerHTML = unfiledOption + folderOptions;
+  } else {
+    container.style.display = 'none';
   }
 }
 
@@ -751,6 +1374,14 @@ async function deleteDoc(docId, e) {
   try {
     const res = await fetch(`${API}/api/documents/${docId}`, { method: 'DELETE' });
     if (res.ok) { 
+      // Remove from active filter if it was filtered (handle unfiled doc filters)
+      const unfiledDocId = `unfiled-${docId}`;
+      const idx = activeFilterFolders.indexOf(unfiledDocId);
+      if (idx >= 0) {
+        activeFilterFolders.splice(idx, 1);
+        saveFilterState();
+      }
+      
       showToast('🗑️', 'Document deleted.', 'success'); 
       loadDocuments();
       // Remove only sources from the deleted document, keep others
@@ -996,6 +1627,13 @@ async function sendQuery() {
 
     const payload = { question: query, web_search: webSearchEnabled, diagram: diagramEnabled };
     if (currentSession) payload.session_id = currentSession;
+    
+    // Auto-apply folder filter
+    const filteredIds = getFilteredDocumentIds();
+    if (filteredIds && filteredIds.length > 0) {
+      payload.document_ids = filteredIds;
+    }
+    
     const res  = await fetch(`${API}/api/query`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}) },
@@ -1362,15 +2000,20 @@ let _quizSubmitted  = false;
 
 function openQuizModal() {
   closeQuiz();
+  closeAllModals();
   const overlay = document.getElementById('quiz-modal-overlay');
   overlay.classList.add('visible');
   document.getElementById('quiz-error').textContent = '';
 
   const note = document.getElementById('quiz-scope-note');
-  if (currentSession) {
-    note.textContent = `📎 Quiz will use documents from your current session.`;
+  const filteredIds = getFilteredDocumentIds();
+  
+  if (filteredIds && filteredIds.length > 0) {
+    note.textContent = `📂 Quiz will use ${filteredIds.length} selected document${filteredIds.length > 1 ? 's' : ''}.`;
+  } else if (currentSession) {
+    note.textContent = `📎 Quiz will use documents from your current session. Use checkboxes to filter.`;
   } else if (currentUser) {
-    note.textContent = `📂 Quiz will use all your uploaded documents.`;
+    note.textContent = `📂 Quiz will use all your documents. Use folder/document checkboxes to filter.`;
   } else {
     note.textContent = `ℹ️ Log in to scope the quiz to your documents.`;
   }
@@ -1392,7 +2035,6 @@ async function generateQuiz() {
   const numQ  = parseInt(document.getElementById('quiz-num').value) || 5;
   const diff  = document.getElementById('quiz-difficulty').value;
   const qType = document.getElementById('quiz-type').value;
-  const topic = document.getElementById('quiz-topic').value.trim();
 
   let docIds = [];
   if (currentSession) {
@@ -1401,6 +2043,12 @@ async function generateQuiz() {
       const data = await r.json();
       docIds     = data.document_ids || [];
     } catch { /* use empty = all docs */ }
+  }
+  
+  // Auto-apply folder filter (overrides session document_ids)
+  const filteredIds = getFilteredDocumentIds();
+  if (filteredIds && filteredIds.length > 0) {
+    docIds = filteredIds;
   }
 
   btn.disabled    = true;
@@ -1414,7 +2062,6 @@ async function generateQuiz() {
         num_questions: numQ,
         difficulty   : diff,
         question_type: qType,
-        topic        : topic,
         document_ids : docIds,
       }),
     });

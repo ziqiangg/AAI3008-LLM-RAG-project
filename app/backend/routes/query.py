@@ -62,6 +62,7 @@ def ask_question():
         logger.warning(f"[DEBUG] Payload web_search={data.get('web_search')} question='{question[:60]}'")
         session_id = data.get('session_id')
         document_ids = data.get('document_ids')
+        folder_ids = data.get('folder_ids')  # NEW: folder filtering support
 
         # NEW: web toggle + explicit ask detection (only triggers web lane)
         web_toggle = bool(data.get('web_search', False))
@@ -125,6 +126,28 @@ def ask_question():
                 # Use session's document_ids if not provided in request
                 if not document_ids and session.document_ids:
                     document_ids = session.document_ids
+            
+            # ═══════════════════════════════════════════════════════════
+            # FOLDER FILTERING: Resolve folder_ids to document_ids
+            # ═══════════════════════════════════════════════════════════
+            if folder_ids and isinstance(folder_ids, list) and len(folder_ids) > 0:
+                from app.backend.models import Document as DocModel
+                folder_doc_rows = (
+                    db.query(DocModel.id)
+                    .filter(
+                        DocModel.folder_id.in_(folder_ids)
+                    )
+                    .all()
+                )
+                folder_doc_ids = [r.id for r in folder_doc_rows]
+                
+                # Merge with explicit document_ids (if both provided, use intersection)
+                if document_ids:
+                    document_ids = list(set(document_ids) & set(folder_doc_ids))
+                else:
+                    document_ids = folder_doc_ids
+                
+                logger.info(f"[Query] Folder filter: {folder_ids} → {len(document_ids)} docs")
 
             logger.info(f"[Query] Question: '{question[:50]}...'")
             logger.info(f"[Query] Session: {session_id}, Documents: {document_ids}, History: {len(conversation_history)} msgs")
@@ -262,6 +285,7 @@ def ask_question():
                         
                         # Apply rewriting strategy
                         rewritten_query = None
+                        use_original_for_rerank = False  # Default: use rewritten query for reranking
                         
                         if strategy == 'conversation_context':
                             rewritten_query = query_rewriter.rewrite_with_conversation_context(
@@ -277,8 +301,39 @@ def ask_question():
                             rewritten_query = variants[0] if variants else question
                         elif strategy == 'decomposition':
                             sub_questions = query_rewriter.decompose_complex_query(question)
-                            # For now, use first sub-question (future: multi-query retrieval)
-                            rewritten_query = sub_questions[0] if sub_questions else question
+                            
+                            # Multi-query retrieval: retrieve chunks for each sub-question
+                            if sub_questions and len(sub_questions) > 1:
+                                logger.warning(f"[QueryRewrite] Multi-query retrieval for {len(sub_questions)} sub-questions")
+                                embeddings_model = get_embeddings()
+                                all_chunks = {}  # Deduplicate by chunk_id, keep best score
+                                
+                                for idx, sub_q in enumerate(sub_questions, 1):
+                                    logger.warning(f"  Sub-Q{idx}: {sub_q}")
+                                    sub_embedding = embeddings_model.embed_query(sub_q)
+                                    sub_chunks = retrieval.retrieve_relevant_chunks(
+                                        db_session=db,
+                                        question_embedding=sub_embedding,
+                                        document_ids=document_ids,
+                                        top_k=Config.TOP_K_RETRIEVAL
+                                    )
+                                    # Merge chunks, keeping best distance for duplicates
+                                    for chunk in sub_chunks:
+                                        chunk_id = chunk['chunk_id']
+                                        if chunk_id not in all_chunks or chunk['distance'] < all_chunks[chunk_id]['distance']:
+                                            all_chunks[chunk_id] = chunk
+                                
+                                retry_chunks = list(all_chunks.values())
+                                logger.info(f"[QueryRewrite] Retrieved {len(retry_chunks)} unique chunks from multi-query")
+                                
+                                # Keep joined sub-questions for logging/tracking
+                                # But we'll use original query for reranking (see below)
+                                rewritten_query = " | ".join(sub_questions)
+                                use_original_for_rerank = True  # Flag to use original question in reranking
+                            else:
+                                # Single sub-question or fallback to original
+                                rewritten_query = sub_questions[0] if sub_questions else question
+                                use_original_for_rerank = False
                         elif strategy == 'hyde':
                             hypothetical_doc = query_rewriter.generate_hypothetical_document(question)
                             # Embed the hypothetical document instead of query
@@ -288,25 +343,34 @@ def ask_question():
                         
                         # If query was actually rewritten, retry retrieval
                         if rewritten_query and rewritten_query != question:
-                            logger.warning(f"[QueryRewrite] Retrying retrieval with rewritten query")
-                            logger.warning(f"  Original: {question}")
-                            logger.warning(f"  Rewritten: {rewritten_query[:200]}..." if len(rewritten_query) > 200 else f"  Rewritten: {rewritten_query}")
+                            # Check if decomposition already did multi-query retrieval
+                            multi_query_done = (strategy == 'decomposition' and 
+                                              sub_questions and len(sub_questions) > 1)
                             
-                            # Re-embed rewritten query
-                            embeddings_model = get_embeddings()
-                            rewritten_embedding = embeddings_model.embed_query(rewritten_query)
+                            if not multi_query_done:
+                                # Single query strategies - do normal retrieval
+                                logger.warning(f"[QueryRewrite] Retrying retrieval with rewritten query")
+                                logger.warning(f"  Original: {question}")
+                                logger.warning(f"  Rewritten: {rewritten_query[:200]}..." if len(rewritten_query) > 200 else f"  Rewritten: {rewritten_query}")
+                                
+                                # Re-embed rewritten query
+                                embeddings_model = get_embeddings()
+                                rewritten_embedding = embeddings_model.embed_query(rewritten_query)
+                                
+                                # Re-retrieve with rewritten query
+                                retry_chunks = retrieval.retrieve_relevant_chunks(
+                                    db_session=db,
+                                    question_embedding=rewritten_embedding,
+                                    document_ids=document_ids,
+                                    top_k=Config.TOP_K_RETRIEVAL
+                                )
+                            # else: multi-query decomposition already set retry_chunks
                             
-                            # Re-retrieve with rewritten query
-                            retry_chunks = retrieval.retrieve_relevant_chunks(
-                                db_session=db,
-                                question_embedding=rewritten_embedding,
-                                document_ids=document_ids,
-                                top_k=Config.TOP_K_RETRIEVAL
-                            )
-                            
-                            # Re-rank with rewritten query
+                            # Re-rank with appropriate query
+                            # For multi-query decomposition, use original question for reranking
+                            rerank_question = question if use_original_for_rerank else rewritten_query
                             retry_final = reranking.rerank_chunks(
-                                question=rewritten_query,
+                                question=rerank_question,
                                 chunks=retry_chunks + web_chunks,  # Include web chunks in reranking
                                 top_k=Config.RERANK_TOP_K
                             )
@@ -330,7 +394,10 @@ def ask_question():
                                 if improvement >= Config.QUERY_REWRITE_MIN_IMPROVEMENT:
                                     logger.warning(f"[QueryRewrite] ✓ Accepting rewritten query (improvement: +{improvement:.2f})")
                                     final_context_chunks = retry_final
-                                    question = rewritten_query  # Use rewritten for LLM prompt
+                                    # For multi-query decomposition, keep original question for LLM
+                                    # For other strategies, use rewritten query
+                                    if not use_original_for_rerank:
+                                        question = rewritten_query
                                     query_was_rewritten = True
                                     rewrite_strategy_used = strategy
                                 else:
@@ -339,7 +406,10 @@ def ask_question():
                                 # Always use rewritten version
                                 logger.warning(f"[QueryRewrite] Using rewritten query (retry_on_improvement=False)")
                                 final_context_chunks = retry_final
-                                question = rewritten_query
+                                # For multi-query decomposition, keep original question for LLM
+                                # For other strategies, use rewritten query
+                                if not use_original_for_rerank:
+                                    question = rewritten_query
                                 query_was_rewritten = True
                                 rewrite_strategy_used = strategy
                         else:
@@ -383,19 +453,24 @@ def ask_question():
                 conversation_history=conversation_history,
                 subject_context=subject_context,
                 language_info=language_info,
-                web_enabled=web_enabled
+                web_enabled=web_enabled,
+                diagram_enabled=diagram_enabled
             )
 
             answer = result['answer']
-            try:
-                tool_output = detect_and_generate_tool(
-                    question=question,
-                    context_chunks=final_context_chunks
-                )
-                logger.warning(f"[Tool] output type: {tool_output['type'] if tool_output else 'none'}")
-            except Exception as tool_err:
-                logger.warning(f"[Tool] Detection failed: {tool_err}")
-                tool_output = None
+            
+            # Only generate diagrams if diagram mode is enabled
+            tool_output = None
+            if diagram_enabled:
+                try:
+                    tool_output = detect_and_generate_tool(
+                        question=question,
+                        context_chunks=final_context_chunks
+                    )
+                    logger.warning(f"[Tool] output type: {tool_output['type'] if tool_output else 'none'}")
+                except Exception as tool_err:
+                    logger.warning(f"[Tool] Detection failed: {tool_err}")
+                    tool_output = None
 
             # ═══════════════════════════════════════════════════════════
             # 7. PREPARE SOURCE CITATIONS (docs + web)

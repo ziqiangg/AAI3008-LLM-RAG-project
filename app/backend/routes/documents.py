@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 import os
 
-from app.backend.models import Document, DocumentChunk
+from app.backend.models import Document, DocumentChunk, Folder
 from app.backend.database import get_db_session
 from app.backend.config import Config
 from app.backend.services.injestion import run_ingestion_pipeline  # adjust path if needed
@@ -44,6 +44,7 @@ def upload_document():
 
     subject = request.form.get("subject", "General")
     user_id = request.form.get("user_id", type=int)
+    folder_id = request.form.get("folder_id", type=int)  # NEW: folder assignment
 
     # Save file to disk
     filename = secure_filename(file.filename)
@@ -60,6 +61,7 @@ def upload_document():
                 file_path=file_path,
                 user_id=user_id,
                 subject=subject,
+                folder_id=folder_id,
             )
             # run_ingestion_pipeline commits internally; we just return the doc
             return jsonify({
@@ -168,6 +170,11 @@ def update_document(doc_id: int):
             
             doc.subject = new_subject
             current_app.logger.info(f"Updated document {doc_id} subjects to: {new_subject}")
+        
+        # NEW: Support moving documents between folders
+        if 'folder_id' in data:
+            doc.folder_id = data['folder_id']  # Can be None to unfile
+            current_app.logger.info(f"Moved document {doc_id} to folder: {data['folder_id']}")
         
         return jsonify({
             "message": "Document updated successfully",

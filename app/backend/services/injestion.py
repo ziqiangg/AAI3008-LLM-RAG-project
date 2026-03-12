@@ -699,6 +699,7 @@ def run_ingestion_pipeline(
     file_path: str,
     user_id: Optional[int] = None,
     subject: Optional[str] = None,
+    folder_id: Optional[int] = None,
 ) -> Document:
     filename = os.path.basename(file_path)
     file_ext = os.path.splitext(filename)[1].lstrip(".")
@@ -786,6 +787,7 @@ def run_ingestion_pipeline(
     # ── 4. Create Document row ──
     doc = Document(
         user_id=user_id,
+        folder_id=folder_id,
         filename=filename,
         file_path=os.path.abspath(file_path),
         file_type=file_ext,

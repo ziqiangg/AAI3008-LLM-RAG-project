@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLM RAG Learning Assistant</title>
-  <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
   <!-- Markdown rendering libraries -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
@@ -27,18 +25,10 @@
      LEFT SIDEBAR
 -------------------------------------------------->
 <aside id="sidebar">
-  <div class="sidebar-header">
-    <span class="logo">🎓</span>
-    <div>
-      <h2>RAG Assistant</h2>
-      <span>AAI3008 LLM Project</span>
-    </div>
-  </div>
-
   <button id="new-chat-btn" onclick="newChat()">&#43;&nbsp; New Chat</button>
   
-  <button id="add-doc-btn" onclick="triggerSidebarUpload()">
-  📎&nbsp; Add document
+  <button id="add-doc-btn" onclick="openDocumentFolderModal()">
+  Add document
   </button>
   <input
     type="file"
@@ -47,11 +37,19 @@
     style="display:none"
     onchange="onSidebarFileSelected(event)"
   >
+  
+  <button id="add-folder-btn" onclick="openCreateFolderModal()" title="New folder">
+  New folder
+  </button>
 
-
-  <div class="sidebar-section-title">Uploaded Documents</div>
-  <div id="docs-list">
-    <div style="font-size:12px; color:var(--text-muted); padding:8px 4px">No documents yet</div>
+  <div class="sidebar-section-title">
+    <span>Documents & Folders</span>
+  </div>
+  
+  <div id="docs-tree-wrapper" class="docs-tree-wrapper">
+    <div id="docs-tree">
+      <div style="font-size:12px; color:var(--text-muted); padding:8px 4px">No documents yet</div>
+    </div>
   </div>
   <div class="sidebar-section-title">Link Sources</div>
 
@@ -59,10 +57,10 @@
     <input id="link-input" type="text" 
            placeholder="Paste a trusted https:// link…" 
            title="Trusted domains: Wikipedia, MDN, Stack Overflow, GitHub, arXiv, Python Docs, Google Cloud, AWS, OpenAI, GeeksforGeeks, PyPI, Medium, Zhihu, CSDN, Baidu, Jianshu" />
-    <button id="add-link-btn" onclick="addLink()">Add</button>
+    <button id="add-link-btn" onclick="addLinkWithFolder()">Add</button>
   </div>
   <div style="font-size:10px; color:var(--text-muted); padding:2px 8px; margin-top:-4px">
-    ℹ️ Only trusted domains accepted (hover input for list)
+    Only trusted domains accepted
   </div>
 
   <div id="link-list" class="link-list"></div>
@@ -261,15 +259,77 @@
         </select>
       </label>
 
-      <label>Topic / Focus <span class="label-hint">(optional)</span>
-        <input id="quiz-topic" type="text" placeholder="e.g. neural networks, osmosis, World War II…" />
-      </label>
-
       <p id="quiz-scope-note" class="quiz-scope-note"></p>
     </div>
 
     <p id="quiz-error" class="quiz-error"></p>
     <button id="quiz-generate-btn" onclick="generateQuiz()">Generate Quiz</button>
+  </div>
+</div>
+
+<!-- ── Folder Modals ─────────────────────────────── -->
+<!-- Create Folder Modal -->
+<div id="create-folder-overlay" class="modal-overlay">
+  <div id="create-folder-modal">
+    <div class="modal-header">
+      <h2>Create Folder</h2>
+      <button onclick="closeCreateFolderModal()">✕</button>
+    </div>
+    <div class="modal-content">
+      <label>Folder Name</label>
+      <input type="text" id="new-folder-name" placeholder="Folder name" maxlength="255" />
+    </div>
+    <div class="modal-error" id="folder-create-error"></div>
+    <div class="modal-actions">
+      <button onclick="closeCreateFolderModal()">Cancel</button>
+      <button onclick="submitCreateFolder()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Folder Modal -->
+<div id="rename-folder-overlay" class="modal-overlay">
+  <div id="rename-folder-modal">
+    <div class="modal-header">
+      <h2>Rename Folder</h2>
+      <button onclick="closeRenameFolderModal()">✕</button>
+    </div>
+    <div class="modal-content">
+      <label>New Folder Name</label>
+      <input type="text" id="rename-folder-name" placeholder="New folder name" maxlength="255" />
+      <input type="hidden" id="rename-folder-id" />
+    </div>
+    <div class="modal-error" id="folder-rename-error"></div>
+    <div class="modal-actions">
+      <button onclick="closeRenameFolderModal()">Cancel</button>
+      <button onclick="submitRenameFolder()">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- Link Folder Selector Popup -->
+<div id="link-folder-popup" class="link-folder-popup" style="display:none;">
+  <div class="popup-content">
+    <div class="popup-header">
+      <span>Select a folder for link</span>
+      <button onclick="closeLinkFolderPopup()">✕</button>
+    </div>
+    <div class="popup-body" id="link-folder-buttons">
+      <!-- Buttons will be generated here -->
+    </div>
+  </div>
+</div>
+
+<!-- Document Folder Selector Popup -->
+<div id="document-folder-popup" class="link-folder-popup" style="display:none;">
+  <div class="popup-content">
+    <div class="popup-header">
+      <span>Select a folder for document</span>
+      <button onclick="closeDocumentFolderModal()">✕</button>
+    </div>
+    <div class="popup-body" id="document-folder-buttons">
+      <!-- Buttons will be generated here -->
+    </div>
   </div>
 </div>
 

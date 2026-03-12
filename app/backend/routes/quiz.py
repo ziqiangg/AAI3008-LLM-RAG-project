@@ -41,7 +41,7 @@ def generate_quiz():                          # ← route function keeps the nam
         question_type = data.get('question_type', 'mcq').lower()
         topic         = data.get('topic', '').strip()
         document_ids  = data.get('document_ids') or []
-
+        folder_ids    = data.get('folder_ids') or []  # NEW: folder filtering support
         if difficulty not in ('easy', 'medium', 'hard'):
             return jsonify({'error': 'difficulty must be easy, medium, or hard'}), 400
         if question_type not in ('mcq', 'multi_select', 'mixed'):
@@ -53,6 +53,24 @@ def generate_quiz():                          # ← route function keeps the nam
         query_embedding = embed_model.embed_query(retrieval_query)
 
         with get_db_session() as db:
+            # ── Resolve folder_ids to document_ids ────────────────────
+            if folder_ids:
+                from app.backend.models import Document as DocModel
+                folder_doc_rows = (
+                    db.query(DocModel.id)
+                    .filter(DocModel.folder_id.in_(folder_ids))
+                    .all()
+                )
+                folder_doc_ids = [r.id for r in folder_doc_rows]
+                
+                # Merge with explicit document_ids (if both provided, use intersection)
+                if document_ids:
+                    document_ids = list(set(document_ids) & set(folder_doc_ids))
+                else:
+                    document_ids = folder_doc_ids
+                
+                logger.info(f"[Quiz] Folder filter: {folder_ids} → {len(document_ids)} docs")
+            
             # ── Retrieve chunks ───────────────────────────────────
             top_k  = min(num_questions * 2, 15)
             chunks = retrieval.retrieve_relevant_chunks(

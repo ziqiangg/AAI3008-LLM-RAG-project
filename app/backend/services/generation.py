@@ -66,7 +66,8 @@ def generate_answer(
         conversation_history=conversation_history,
         subject_context=subject_context,
         language_info=language_info,
-        web_enabled=web_enabled
+        web_enabled=web_enabled,
+        diagram_enabled=kwargs.get('diagram_enabled', False)
     )
 
     # Initialize model

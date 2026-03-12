@@ -78,6 +78,7 @@ def create_app(config_name=None):
 def register_blueprints(app):
     from app.backend.routes.users     import users_bp
     from app.backend.routes.documents import documents_bp
+    from app.backend.routes.folders   import folders_bp
     from app.backend.routes.sessions  import sessions_bp
     from app.backend.routes.query     import query_bp
     from app.backend.routes.quiz      import quiz_bp
@@ -85,6 +86,7 @@ def register_blueprints(app):
     
     app.register_blueprint(users_bp,     url_prefix='/api/users')
     app.register_blueprint(documents_bp, url_prefix='/api/documents')
+    app.register_blueprint(folders_bp,   url_prefix='/api/folders')
     app.register_blueprint(sessions_bp,  url_prefix='/api/sessions')
     app.register_blueprint(query_bp,     url_prefix='/api/query')
     app.register_blueprint(quiz_bp,     url_prefix='/api/quiz')

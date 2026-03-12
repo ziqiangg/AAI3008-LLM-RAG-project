@@ -20,6 +20,7 @@ def ingest_links():
     data = request.get_json(silent=True) or {}
     urls = data.get("urls") or []
     user_id = data.get("user_id")
+    folder_id = data.get("folder_id")  # NEW: optional folder assignment
 
     if not isinstance(urls, list) or not urls:
         return jsonify({"error": "urls must be a non-empty list"}), 400
@@ -55,6 +56,7 @@ def ingest_links():
 
             doc = Document(
                 user_id=int(user_id),
+                folder_id=int(folder_id) if folder_id else None,  # NEW: assign to folder
                 filename=filename,
                 file_path=url,     # store URL here
                 file_type="link",
