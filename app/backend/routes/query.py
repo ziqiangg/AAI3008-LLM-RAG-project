@@ -14,6 +14,7 @@ from app.backend.services import retrieval, reranking, generation, classificatio
 from app.backend.services.query_rewriter import get_query_rewriter
 from app.backend.config import Config
 from app.backend.services.tool_detection import detect_and_generate_tool
+from app.backend.services.tool_router import decide_tool_routing
 
 import os
 print(">>> LOADED query.py from:", os.path.abspath(__file__), flush=True)
@@ -22,6 +23,35 @@ from app.backend.services.translation import detect_language
 
 query_bp = Blueprint('query', __name__)
 logger = logging.getLogger(__name__)
+
+
+def _build_rewrite_context(conversation_history: list) -> list:
+    """Build compact rewrite context: last user turns + summarized assistant facts."""
+    if not conversation_history:
+        return []
+
+    max_user_turns = int(getattr(Config, 'WORKING_MEMORY_USER_TURNS', 3) or 3)
+    user_turns = [m for m in conversation_history if m.get('role') == 'user'][-max_user_turns:]
+
+    assistant_msgs = [m for m in conversation_history if m.get('role') == 'assistant']
+    assistant_facts = []
+    for msg in assistant_msgs[-2:]:
+        content = (msg.get('content') or '').strip()
+        if not content:
+            continue
+        # Lightweight factual condensation: first sentence / short span.
+        first = content.split('\n')[0].strip()
+        first = first[:220]
+        if first:
+            assistant_facts.append(first)
+
+    rewrite_ctx = list(user_turns)
+    if assistant_facts:
+        rewrite_ctx.append({
+            'role': 'assistant',
+            'content': "Factual summary from previous assistant responses: " + " | ".join(assistant_facts)
+        })
+    return rewrite_ctx
 
 
 @query_bp.route('', methods=['POST'])
@@ -60,15 +90,22 @@ def ask_question():
         if not question:
             return jsonify({'error': 'question cannot be empty'}), 400
         logger.warning(f"[DEBUG] Payload web_search={data.get('web_search')} question='{question[:60]}'")
+        original_user_question = question
         session_id = data.get('session_id')
         document_ids = data.get('document_ids')
         folder_ids = data.get('folder_ids')  # NEW: folder filtering support
 
-        # NEW: web toggle + explicit ask detection (only triggers web lane)
+        # Centralized routing decision (single source of truth for intent checks)
         web_toggle = bool(data.get('web_search', False))
-        web_explicit = web_retrieval.user_explicitly_requested_web(question)
-        web_enabled = web_toggle or web_explicit
-        diagram_enabled = bool(data.get('diagram', False))
+        diagram_toggle = bool(data.get('diagram', False))
+        routing_decision = decide_tool_routing(
+            original_query=original_user_question,
+            effective_query=question,
+            web_toggle=web_toggle,
+            diagram_toggle=diagram_toggle,
+        )
+        web_enabled = routing_decision.web_enabled
+        diagram_enabled = routing_decision.diagram_enabled
 
         # Check if user is authenticated (optional)
         current_user_id = None
@@ -82,6 +119,7 @@ def ask_question():
 
         with get_db_session() as db:
             conversation_history = []
+            rewrite_context_history = []
             # ═══════════════════════════════════════════════════════════
             # DETECT LANGUAGE (For multilingual support)
             # ═══════════════════════════════════════════════════════════
@@ -116,9 +154,11 @@ def ask_question():
                 # Reverse to chronological order
                 messages.reverse()
                 conversation_history = [
-                    {'role': msg.role, 'content': msg.content}
+                    {'role': msg.role, 'content': msg.content, 'sources': msg.sources}
                     for msg in messages
                 ]
+
+                rewrite_context_history = _build_rewrite_context(conversation_history)
 
                 # Update session last accessed
                 session.last_accessed = datetime.utcnow()
@@ -151,7 +191,10 @@ def ask_question():
 
             logger.info(f"[Query] Question: '{question[:50]}...'")
             logger.info(f"[Query] Session: {session_id}, Documents: {document_ids}, History: {len(conversation_history)} msgs")
-            logger.info(f"[Query] Web enabled: {web_enabled} (toggle={web_toggle}, explicit={web_explicit})")
+            logger.info(
+                f"[Query] Web enabled: {web_enabled} "
+                f"(toggle={web_toggle}, explicit={routing_decision.web_requested_explicit})"
+            )
 
             # ═══════════════════════════════════════════════════════════
             # 3. EMBED QUESTION (No translation needed - multilingual model handles cross-lingual semantic matching)
@@ -171,23 +214,6 @@ def ask_question():
                 document_ids=document_ids,
                 top_k=Config.TOP_K_RETRIEVAL
             )
-
-            if not retrieved_chunks:
-                return jsonify({
-                    'answer': (
-                        "I couldn't find any relevant information in the uploaded documents to answer your question. "
-                        "Please ensure you have uploaded documents or try rephrasing your question."
-                    ),
-                    'sources': [],
-                    'session_id': session_id,
-                    'metadata': {
-                        'num_chunks_retrieved': 0,
-                        'num_chunks_reranked': 0,
-                        'num_web_chunks': 0,
-                        'error': 'No relevant chunks found'
-                    }
-                }), 200
-
             logger.info(f"[Query] Retrieved {len(retrieved_chunks)} chunks (docs)")
 
             # ═══════════════════════════════════════════════════════════
@@ -210,6 +236,22 @@ def ask_question():
             # ═══════════════════════════════════════════════════════════
             all_chunks = retrieved_chunks + web_chunks
             logger.info(f"[Query] Combined pool: {len(retrieved_chunks)} docs + {len(web_chunks)} web = {len(all_chunks)} total")
+
+            if not all_chunks:
+                return jsonify({
+                    'answer': (
+                        "I couldn't find any relevant information in the available sources to answer your question. "
+                        "Please upload documents, enable web search, or try rephrasing your question."
+                    ),
+                    'sources': [],
+                    'session_id': session_id,
+                    'metadata': {
+                        'num_chunks_retrieved': 0,
+                        'num_chunks_reranked': 0,
+                        'num_web_chunks': 0,
+                        'error': 'No relevant chunks found in docs or web'
+                    }
+                }), 200
 
             try:
                 final_context_chunks = reranking.rerank_chunks(
@@ -234,6 +276,7 @@ def ask_question():
             original_question = question  # Preserve original for logging
             query_was_rewritten = False
             rewrite_strategy_used = None
+            accepted_rewritten_query = None
             original_avg_score = 0.0
             rewritten_avg_score = 0.0
             
@@ -248,7 +291,7 @@ def ask_question():
                 logger.warning(f"[QueryRewrite] Feature enabled, checking scores...")
                 logger.warning(f"[QueryRewrite] Average rerank score: {avg_rerank_score:.2f}")
                 logger.warning(f"[QueryRewrite] Thresholds - Poor: {Config.RERANK_QUALITY_THRESHOLD_POOR}, Decent: {Config.RERANK_QUALITY_THRESHOLD_DECENT}")
-                logger.warning(f"[QueryRewrite] Conversation history messages: {len(conversation_history) if conversation_history else 0}")
+                logger.warning(f"[QueryRewrite] Rewrite context messages: {len(rewrite_context_history) if rewrite_context_history else 0}")
                 
                 # Determine if query rewriting is needed
                 needs_rewrite = False
@@ -262,7 +305,7 @@ def ask_question():
                     
                 elif avg_rerank_score < Config.RERANK_QUALITY_THRESHOLD_DECENT:
                     # Moderate scores: Check if conversational context could help
-                    if conversation_history and len(conversation_history) >= 2:
+                    if rewrite_context_history and len(rewrite_context_history) >= 2:
                         needs_rewrite = True
                         rewrite_reason = f"moderate relevance with conversation (avg={avg_rerank_score:.2f} < {Config.RERANK_QUALITY_THRESHOLD_DECENT})"
                         logger.info(f"[QueryRewrite] {rewrite_reason}")
@@ -275,7 +318,7 @@ def ask_question():
                         if Config.QUERY_REWRITE_STRATEGY_AUTO:
                             strategy = query_rewriter.analyze_query_needs(
                                 query=question,
-                                conversation_history=conversation_history,
+                                conversation_history=rewrite_context_history,
                                 avg_rerank_score=avg_rerank_score
                             )
                             logger.warning(f"[QueryRewrite] Auto-selected strategy: {strategy}")
@@ -290,7 +333,7 @@ def ask_question():
                         if strategy == 'conversation_context':
                             rewritten_query = query_rewriter.rewrite_with_conversation_context(
                                 current_query=question,
-                                conversation_history=conversation_history
+                                conversation_history=rewrite_context_history
                             )
                         elif strategy == 'expansion':
                             variants = query_rewriter.expand_query_with_synonyms(
@@ -394,10 +437,8 @@ def ask_question():
                                 if improvement >= Config.QUERY_REWRITE_MIN_IMPROVEMENT:
                                     logger.warning(f"[QueryRewrite] ✓ Accepting rewritten query (improvement: +{improvement:.2f})")
                                     final_context_chunks = retry_final
-                                    # For multi-query decomposition, keep original question for LLM
-                                    # For other strategies, use rewritten query
-                                    if not use_original_for_rerank:
-                                        question = rewritten_query
+                                    # Keep retrieval rewrite separate from user-facing question.
+                                    accepted_rewritten_query = rewritten_query
                                     query_was_rewritten = True
                                     rewrite_strategy_used = strategy
                                 else:
@@ -406,10 +447,8 @@ def ask_question():
                                 # Always use rewritten version
                                 logger.warning(f"[QueryRewrite] Using rewritten query (retry_on_improvement=False)")
                                 final_context_chunks = retry_final
-                                # For multi-query decomposition, keep original question for LLM
-                                # For other strategies, use rewritten query
-                                if not use_original_for_rerank:
-                                    question = rewritten_query
+                                # Keep retrieval rewrite separate from user-facing question.
+                                accepted_rewritten_query = rewritten_query
                                 query_was_rewritten = True
                                 rewrite_strategy_used = strategy
                         else:
@@ -444,6 +483,16 @@ def ask_question():
                 'is_english': detected_lang_code == 'en'
             }
 
+            # Re-evaluate routing with effective (possibly rewritten) query.
+            routing_decision = decide_tool_routing(
+                original_query=original_user_question,
+                effective_query=original_user_question,
+                web_toggle=web_toggle,
+                diagram_toggle=diagram_toggle,
+            )
+            web_enabled = routing_decision.web_enabled
+            diagram_enabled = routing_decision.diagram_enabled
+
             # ═══════════════════════════════════════════════════════════
             # GENERATE ANSWER IN USER'S LANGUAGE
             # ═══════════════════════════════════════════════════════════
@@ -454,7 +503,9 @@ def ask_question():
                 subject_context=subject_context,
                 language_info=language_info,
                 web_enabled=web_enabled,
-                diagram_enabled=diagram_enabled
+                diagram_enabled=diagram_enabled,
+                web_requested=routing_decision.web_requested_explicit,
+                diagram_requested=routing_decision.diagram_requested_explicit,
             )
 
             answer = result['answer']
@@ -467,6 +518,13 @@ def ask_question():
                         question=question,
                         context_chunks=final_context_chunks
                     )
+                    if (tool_output is None) and routing_decision.diagram_requested_explicit:
+                        logger.warning("[Tool] Explicit diagram request detected; forcing Mermaid fallback")
+                        tool_output = detect_and_generate_tool(
+                            question=question,
+                            context_chunks=final_context_chunks,
+                            forced_type='MERMAID'
+                        )
                     logger.warning(f"[Tool] output type: {tool_output['type'] if tool_output else 'none'}")
                 except Exception as tool_err:
                     logger.warning(f"[Tool] Detection failed: {tool_err}")
@@ -504,7 +562,7 @@ def ask_question():
                     user_msg_metadata = {
                         'query_rewritten': True,
                         'original_query': original_question,
-                        'rewritten_query': question,
+                        'rewritten_query': accepted_rewritten_query,
                         'rewrite_strategy': rewrite_strategy_used,
                         'score_improvement': rewritten_avg_score - original_avg_score
                     }
@@ -512,7 +570,7 @@ def ask_question():
                 user_msg = Message(
                     session_id=session_id,
                     role='user',
-                    content=question,  # Store the final query (rewritten if applicable)
+                    content=original_question,
                     sources=user_msg_metadata  # Store rewrite metadata in sources field
                 )
                 db.add(user_msg)
@@ -521,7 +579,7 @@ def ask_question():
                     session_id=session_id,
                     role='assistant',
                     content=answer,
-                    sources={'chunks': sources}
+                    sources={'chunks': sources, 'tool': tool_output}
                 )
                 db.add(assistant_msg)
 
@@ -559,11 +617,14 @@ def ask_question():
                     'num_context_messages': len(conversation_history),
                     'finish_reason': result.get('finish_reason', 'COMPLETED'),
                     'web_enabled': web_enabled,
+                    'diagram_enabled': diagram_enabled,
+                    'web_requested_explicit': routing_decision.web_requested_explicit,
+                    'diagram_requested_explicit': routing_decision.diagram_requested_explicit,
                     # Query rewriting metrics
                     'query_rewritten': query_was_rewritten,
                     'rewrite_strategy': rewrite_strategy_used,
                     'original_query': original_question if query_was_rewritten else None,
-                    'rewritten_query': question if query_was_rewritten else None,
+                    'rewritten_query': accepted_rewritten_query if query_was_rewritten else None,
                     'score_improvement': (rewritten_avg_score - original_avg_score) if query_was_rewritten else None
                 }
             }), 200

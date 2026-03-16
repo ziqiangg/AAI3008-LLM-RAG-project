@@ -307,6 +307,57 @@
   </div>
 </div>
 
+<!-- Session Memory Modal -->
+<div id="memory-modal-overlay" class="modal-overlay">
+  <div id="memory-modal">
+    <div class="modal-header">
+      <h2>Session Memory</h2>
+      <button class="memory-modal-close" onclick="closeMemoryModal()">✕</button>
+    </div>
+    <div class="modal-content memory-modal-content">
+      <label>Factual Summary (Short)</label>
+      <textarea id="memory-short" rows="3" placeholder="Short factual summary"></textarea>
+
+      <label>Factual Summary (Long)</label>
+      <textarea id="memory-long" rows="6" placeholder="Longer factual summary"></textarea>
+
+      <label>Unresolved Questions</label>
+      <p class="memory-field-hint">Store open questions as separate items. No fixed format is required.</p>
+      <select id="memory-unresolved-select" class="memory-select" size="4" onchange="onMemoryUnresolvedSelectChange()"></select>
+      <div class="memory-inline-editor">
+        <input type="text" id="memory-unresolved-input" placeholder="Add or edit an unresolved question" />
+        <button type="button" onclick="upsertMemoryUnresolvedQuestion()">Add / Update</button>
+        <button type="button" class="danger" onclick="removeMemoryUnresolvedQuestion()">Remove</button>
+      </div>
+
+      <label>Entities and Aliases</label>
+      <p class="memory-field-hint">Purpose: preserve canonical names and alternate terms so future retrieval and rewriting can resolve references consistently.</p>
+      <select id="memory-entities-select" class="memory-select" size="4" onchange="onMemoryEntitySelectChange()"></select>
+      <div class="memory-entity-grid">
+        <input type="text" id="memory-entity-name" placeholder="Entity name (example: CNN)" />
+        <input type="text" id="memory-entity-aliases" placeholder="Aliases (comma separated, optional)" />
+      </div>
+      <div class="memory-inline-editor">
+        <button type="button" onclick="upsertMemoryEntity()">Add / Update</button>
+        <button type="button" class="danger" onclick="removeMemoryEntity()">Remove</button>
+      </div>
+
+      <label class="memory-toggle-row">
+        <input type="checkbox" id="memory-freeform-toggle" onchange="toggleMemoryFreeform()" />
+        Enable Freeform Edit
+      </label>
+
+      <label>Freeform Notes (optional)</label>
+      <textarea id="memory-freeform" rows="5" placeholder="Freeform memory notes (only when enabled)" disabled></textarea>
+    </div>
+    <div class="modal-error" id="memory-error"></div>
+    <div class="modal-actions">
+      <button onclick="closeMemoryModal()">Cancel</button>
+      <button onclick="saveSessionMemory()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Link Folder Selector Popup -->
 <div id="link-folder-popup" class="link-folder-popup" style="display:none;">
   <div class="popup-content">

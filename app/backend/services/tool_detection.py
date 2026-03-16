@@ -24,6 +24,7 @@ Reply with ONLY one word — nothing else:
   NONE     → if plain text is sufficient
 
 Question: {question}
+Context: {context}
 
 Reply with exactly one word: MERMAID, DESMOS, or NONE"""
 
@@ -151,7 +152,7 @@ def _parse_json_response(raw: str):
 
 # ─── Main entry point ────────────────────────────────────────────────────────
 
-def detect_and_generate_tool(question: str, context_chunks: list):
+def detect_and_generate_tool(question: str, context_chunks: list, forced_type: str = None):
     """
     Detect if a visual tool is needed and generate its data.
 
@@ -167,25 +168,27 @@ def detect_and_generate_tool(question: str, context_chunks: list):
         )
 
         # ── Step 1: Classify ──────────────────────────────────────────────
-        decision = _call_gemini(
-            DETECTION_PROMPT.format(
-                question=question,
-            )
-        ).upper().strip()
+        if forced_type:
+            decision = forced_type.upper().strip()
+        else:
+            raw_decision = _call_gemini(
+                DETECTION_PROMPT.format(
+                    question=question,
+                    context=full_context,
+                )
+            ).upper().strip()
+            decision = raw_decision.split()[0] if raw_decision else "NONE"
 
         logger.info(f"[ToolDetection] Decision: {decision}")
 
         # ── Step 2a: Build Mermaid from JSON data ─────────────────────────
-        if "MERMAID" in decision:
+        if decision == "MERMAID":
             raw = _call_gemini(
                 MERMAID_DATA_PROMPT.format(
                     question=question,
                     context=full_context
                 )
             )
-            with open('/tmp/gemini_raw.txt', 'w') as f:
-                f.write(raw)
-            logger.warning(f"[ToolDetection] Raw saved to /tmp/gemini_raw.txt")
             try:
                 diagram_data = _parse_json_response(raw)
                 code = build_mermaid_from_data(diagram_data)
@@ -196,7 +199,7 @@ def detect_and_generate_tool(question: str, context_chunks: list):
                 return None
 
         # # ── Step 2b: Desmos expressions ───────────────────────────────────
-        if "DESMOS" in decision:
+        if decision == "DESMOS":
             raw = _call_gemini(
                 DESMOS_PROMPT.format(
                     question=question,

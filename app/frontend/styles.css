@@ -1404,6 +1404,143 @@ QUIZ CONFIG MODAL
 }
 #quiz-modal-overlay.visible { display: flex; }
 
+#memory-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 220;
+  align-items: center;
+  justify-content: center;
+}
+
+#memory-modal-overlay.visible { display: flex; }
+
+#memory-modal {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  width: min(720px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#memory-modal .memory-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 0 2px;
+  opacity: 0.7;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+#memory-modal .memory-modal-close:hover {
+  opacity: 1;
+  color: var(--danger);
+}
+
+.memory-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.memory-modal-content textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.memory-field-hint {
+  margin: -2px 0 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.memory-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.memory-inline-editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.memory-inline-editor input,
+.memory-entity-grid input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.memory-inline-editor button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.memory-inline-editor button:hover {
+  background: var(--bg-input);
+}
+
+.memory-inline-editor button.danger:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.memory-entity-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.memory-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+@media (max-width: 640px) {
+  .memory-inline-editor {
+    flex-wrap: wrap;
+  }
+
+  .memory-inline-editor input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .memory-entity-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 #quiz-modal {
   background: var(--bg-sidebar);
   border: 1px solid var(--border);

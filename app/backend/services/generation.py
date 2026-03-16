@@ -35,7 +35,9 @@ def generate_answer(
     subject_context: Optional[Dict] = None,
     language_info: Optional[Dict] = None,
     web_enabled: bool = False,
-    diagram_enabled: bool = False
+    diagram_enabled: bool = False,
+    web_requested: bool = False,
+    diagram_requested: bool = False,
 ) -> Dict:
     """
     Generate an answer using Gemini API based on context and conversation history.
@@ -68,7 +70,9 @@ def generate_answer(
         subject_context=subject_context,
         language_info=language_info,
         web_enabled=web_enabled,
-        diagram_enabled=diagram_enabled
+        diagram_enabled=diagram_enabled,
+        web_requested=web_requested,
+        diagram_requested=diagram_requested,
     )
 
     # Initialize model

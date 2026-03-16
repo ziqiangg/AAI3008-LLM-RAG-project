@@ -3,23 +3,15 @@ import requests
 from urllib.parse import urlparse
 import logging
 from app.backend.config import Config
+from app.backend.services.tool_router import user_requested_web
 
 try:
     from bs4 import BeautifulSoup
 except Exception:
     BeautifulSoup = None
 
-
-# Keywords to detect explicit user request for web search (in-message)
-WEB_EXPLICIT_KEYWORDS = [
-    "search the web", "search online", "look up online", "lookup online",
-    "browse the web", "check the latest", "latest info", "verify online",
-]
-
-
 def user_explicitly_requested_web(question: str) -> bool:
-    q = (question or "").lower()
-    return any(k in q for k in WEB_EXPLICIT_KEYWORDS)
+    return user_requested_web(question)
 
 
 def is_trusted_url(url: str, lang_code: str = None) -> bool:

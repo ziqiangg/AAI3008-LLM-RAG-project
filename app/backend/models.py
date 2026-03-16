@@ -121,6 +121,7 @@ class Session(Base):
     # Relationships
     user = relationship("User", back_populates="sessions")
     messages = relationship("Message", back_populates="session", cascade="all, delete-orphan", order_by="Message.created_at")
+    memory = relationship("SessionMemory", back_populates="session", cascade="all, delete-orphan", uselist=False)
     
     def to_dict(self):
         """Convert model to dictionary"""
@@ -153,6 +154,34 @@ class Message(Base):
             'role': self.role, 'content': self.content,
             'sources': self.sources,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class SessionMemory(Base):
+    """Session-scoped memory store (structured by default, optional freeform edits)."""
+    __tablename__ = 'session_memory'
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(Integer, ForeignKey('sessions.id', ondelete='CASCADE'), nullable=False, unique=True)
+    structured_data = Column(JSONB, nullable=False, default=dict)
+    freeform_text = Column(Text, nullable=True)
+    freeform_enabled = Column(Integer, nullable=False, default=0)  # 0=False, 1=True
+    latest_diagram_artifact = Column(JSONB, nullable=True)  # latest mermaid/desmos only
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    updated_at = Column(TIMESTAMP, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    session = relationship("Session", back_populates="memory")
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'structured_data': self.structured_data or {},
+            'freeform_text': self.freeform_text,
+            'freeform_enabled': bool(self.freeform_enabled),
+            'latest_diagram_artifact': self.latest_diagram_artifact,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }
 
 class DocumentChunk(Base):

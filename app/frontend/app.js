@@ -16,6 +16,11 @@ let authMode       = 'login';   // 'login' | 'register'
 let currentUser    = null;      // { id, username, email }
 let currentToken   = localStorage.getItem('rag_token') || null;
 let currentSession = null;      // active session id
+let currentSessionMemory = null;
+let memoryUnresolvedQuestions = [];
+let memoryEntities = [];
+let selectedMemoryUnresolvedIndex = -1;
+let selectedMemoryEntityIndex = -1;
 let toastTimeout   = null;      // toast notification timer
 let stageTimer     = null;      // loading stage progress timer
 
@@ -52,6 +57,11 @@ window.addEventListener('load', () => {
   // Close document folder popup when clicking outside
   document.getElementById('document-folder-popup')?.addEventListener('click', (e) => {
     if (e.target.id === 'document-folder-popup') closeDocumentFolderModal();
+  });
+
+  // Close memory modal when clicking outside
+  document.getElementById('memory-modal-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'memory-modal-overlay') closeMemoryModal();
   });
 });
 
@@ -348,6 +358,8 @@ function showUserMenu() {
   dropdown.style.top  = (rect.bottom + window.scrollY + 8) + 'px';
   dropdown.style.right = (window.innerWidth - rect.right) + 'px';
   dropdown.innerHTML = `
+    <button class="user-dropdown-item" onclick="openMemoryModal()">🧠 Session Memory</button>
+    <div class="user-dropdown-divider"></div>
     <button class="user-dropdown-item" onclick="confirmLogout()">🚪 Logout</button>
     <div class="user-dropdown-divider"></div>
     <button class="user-dropdown-item danger" onclick="confirmDeleteAccount()">🗑️ Delete Account</button>
@@ -1034,6 +1046,7 @@ function closeAllModals() {
   document.getElementById('link-folder-popup').style.display = 'none';
   document.getElementById('modal-overlay').classList.remove('visible');
   document.getElementById('quiz-modal-overlay').classList.remove('visible');
+  document.getElementById('memory-modal-overlay').classList.remove('visible');
 }
 
 function openCreateFolderModal() {
@@ -2250,4 +2263,264 @@ function closeQuiz() {
   _currentQuiz   = null;
   _quizAnswers   = {};
   _quizSubmitted = false;
+}
+
+function closeMemoryModal() {
+  const overlay = document.getElementById('memory-modal-overlay');
+  if (overlay) overlay.classList.remove('visible');
+}
+
+function toggleMemoryFreeform() {
+  const enabled = !!document.getElementById('memory-freeform-toggle')?.checked;
+  const freeform = document.getElementById('memory-freeform');
+  if (freeform) freeform.disabled = !enabled;
+}
+
+function _normalizeUnresolvedQuestions(items) {
+  if (Array.isArray(items)) {
+    return items.map(x => String(x || '').trim()).filter(Boolean);
+  }
+  if (typeof items === 'string') {
+    return items.split('\n').map(x => x.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function _normalizeEntities(items) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map(item => {
+      const entity = (item?.entity || '').toString().trim();
+      const aliasesRaw = Array.isArray(item?.aliases)
+        ? item.aliases
+        : (typeof item?.aliases === 'string' ? item.aliases.split(',') : []);
+      const aliases = aliasesRaw.map(a => String(a || '').trim()).filter(Boolean);
+      return { entity, aliases };
+    })
+    .filter(item => item.entity);
+}
+
+function _renderMemoryUnresolvedSelect() {
+  const sel = document.getElementById('memory-unresolved-select');
+  if (!sel) return;
+  sel.innerHTML = '';
+
+  memoryUnresolvedQuestions.forEach((q, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = q;
+    sel.appendChild(opt);
+  });
+
+  if (memoryUnresolvedQuestions.length === 0) {
+    selectedMemoryUnresolvedIndex = -1;
+    document.getElementById('memory-unresolved-input').value = '';
+    return;
+  }
+
+  if (selectedMemoryUnresolvedIndex < 0 || selectedMemoryUnresolvedIndex >= memoryUnresolvedQuestions.length) {
+    selectedMemoryUnresolvedIndex = 0;
+  }
+  sel.selectedIndex = selectedMemoryUnresolvedIndex;
+  document.getElementById('memory-unresolved-input').value = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] || '';
+}
+
+function onMemoryUnresolvedSelectChange() {
+  const sel = document.getElementById('memory-unresolved-select');
+  if (!sel) return;
+  selectedMemoryUnresolvedIndex = sel.selectedIndex;
+  document.getElementById('memory-unresolved-input').value =
+    selectedMemoryUnresolvedIndex >= 0 ? (memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] || '') : '';
+}
+
+function upsertMemoryUnresolvedQuestion() {
+  const input = document.getElementById('memory-unresolved-input');
+  const errEl = document.getElementById('memory-error');
+  const value = (input?.value || '').trim();
+  if (!value) {
+    if (errEl) errEl.textContent = 'Please enter a question first.';
+    return;
+  }
+
+  if (selectedMemoryUnresolvedIndex >= 0 && selectedMemoryUnresolvedIndex < memoryUnresolvedQuestions.length) {
+    memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] = value;
+  } else {
+    memoryUnresolvedQuestions.push(value);
+    selectedMemoryUnresolvedIndex = memoryUnresolvedQuestions.length - 1;
+  }
+
+  if (errEl) errEl.textContent = '';
+  _renderMemoryUnresolvedSelect();
+}
+
+function removeMemoryUnresolvedQuestion() {
+  const errEl = document.getElementById('memory-error');
+  if (selectedMemoryUnresolvedIndex < 0 || selectedMemoryUnresolvedIndex >= memoryUnresolvedQuestions.length) {
+    if (errEl) errEl.textContent = 'Select an unresolved question to remove.';
+    return;
+  }
+
+  memoryUnresolvedQuestions.splice(selectedMemoryUnresolvedIndex, 1);
+  selectedMemoryUnresolvedIndex = Math.min(selectedMemoryUnresolvedIndex, memoryUnresolvedQuestions.length - 1);
+  if (errEl) errEl.textContent = '';
+  _renderMemoryUnresolvedSelect();
+}
+
+function _renderMemoryEntitiesSelect() {
+  const sel = document.getElementById('memory-entities-select');
+  if (!sel) return;
+  sel.innerHTML = '';
+
+  memoryEntities.forEach((item, i) => {
+    const opt = document.createElement('option');
+    const aliasText = (item.aliases || []).join(', ');
+    opt.value = String(i);
+    opt.textContent = aliasText ? `${item.entity} (${aliasText})` : item.entity;
+    sel.appendChild(opt);
+  });
+
+  if (memoryEntities.length === 0) {
+    selectedMemoryEntityIndex = -1;
+    document.getElementById('memory-entity-name').value = '';
+    document.getElementById('memory-entity-aliases').value = '';
+    return;
+  }
+
+  if (selectedMemoryEntityIndex < 0 || selectedMemoryEntityIndex >= memoryEntities.length) {
+    selectedMemoryEntityIndex = 0;
+  }
+  sel.selectedIndex = selectedMemoryEntityIndex;
+  onMemoryEntitySelectChange();
+}
+
+function onMemoryEntitySelectChange() {
+  const sel = document.getElementById('memory-entities-select');
+  if (!sel) return;
+  selectedMemoryEntityIndex = sel.selectedIndex;
+  const item = selectedMemoryEntityIndex >= 0 ? memoryEntities[selectedMemoryEntityIndex] : null;
+  document.getElementById('memory-entity-name').value = item?.entity || '';
+  document.getElementById('memory-entity-aliases').value = Array.isArray(item?.aliases) ? item.aliases.join(', ') : '';
+}
+
+function upsertMemoryEntity() {
+  const errEl = document.getElementById('memory-error');
+  const entityName = (document.getElementById('memory-entity-name').value || '').trim();
+  const aliases = (document.getElementById('memory-entity-aliases').value || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  if (!entityName) {
+    if (errEl) errEl.textContent = 'Entity name is required.';
+    return;
+  }
+
+  const payload = { entity: entityName, aliases };
+
+  if (selectedMemoryEntityIndex >= 0 && selectedMemoryEntityIndex < memoryEntities.length) {
+    memoryEntities[selectedMemoryEntityIndex] = payload;
+  } else {
+    memoryEntities.push(payload);
+    selectedMemoryEntityIndex = memoryEntities.length - 1;
+  }
+
+  if (errEl) errEl.textContent = '';
+  _renderMemoryEntitiesSelect();
+}
+
+function removeMemoryEntity() {
+  const errEl = document.getElementById('memory-error');
+  if (selectedMemoryEntityIndex < 0 || selectedMemoryEntityIndex >= memoryEntities.length) {
+    if (errEl) errEl.textContent = 'Select an entity to remove.';
+    return;
+  }
+
+  memoryEntities.splice(selectedMemoryEntityIndex, 1);
+  selectedMemoryEntityIndex = Math.min(selectedMemoryEntityIndex, memoryEntities.length - 1);
+  if (errEl) errEl.textContent = '';
+  _renderMemoryEntitiesSelect();
+}
+
+async function openMemoryModal() {
+  closeUserDropdown();
+  closeAllModals();
+  if (!currentSession) {
+    showToast('⚠️', 'Open a session first to edit session memory.', 'warning');
+    return;
+  }
+
+  const errEl = document.getElementById('memory-error');
+  if (errEl) errEl.textContent = '';
+
+  try {
+    const res = await authFetch(`/api/sessions/${currentSession}/memory`);
+    const data = await res.json();
+    if (!res.ok) {
+      showToast('❌', data.error || 'Could not load session memory.', 'error');
+      return;
+    }
+
+    currentSessionMemory = data.memory || null;
+    const structured = currentSessionMemory?.structured_data || {};
+
+    document.getElementById('memory-short').value = structured.factual_summary_short || '';
+    document.getElementById('memory-long').value = structured.factual_summary_long || '';
+    memoryUnresolvedQuestions = _normalizeUnresolvedQuestions(structured.unresolved_questions);
+    memoryEntities = _normalizeEntities(structured.entities_and_aliases);
+    selectedMemoryUnresolvedIndex = memoryUnresolvedQuestions.length ? 0 : -1;
+    selectedMemoryEntityIndex = memoryEntities.length ? 0 : -1;
+    _renderMemoryUnresolvedSelect();
+    _renderMemoryEntitiesSelect();
+
+    const freeformEnabled = !!currentSessionMemory?.freeform_enabled;
+    const toggle = document.getElementById('memory-freeform-toggle');
+    toggle.checked = freeformEnabled;
+    document.getElementById('memory-freeform').value = currentSessionMemory?.freeform_text || '';
+    toggleMemoryFreeform();
+
+    document.getElementById('memory-modal-overlay').classList.add('visible');
+  } catch (e) {
+    showToast('❌', 'Could not load session memory.', 'error');
+  }
+}
+
+async function saveSessionMemory() {
+  if (!currentSession) {
+    showToast('⚠️', 'No active session selected.', 'warning');
+    return;
+  }
+
+  const freeformEnabled = !!document.getElementById('memory-freeform-toggle')?.checked;
+  const payload = {
+    structured_data: {
+      factual_summary_short: (document.getElementById('memory-short').value || '').trim(),
+      factual_summary_long: (document.getElementById('memory-long').value || '').trim(),
+      unresolved_questions: memoryUnresolvedQuestions,
+      entities_and_aliases: memoryEntities,
+    },
+    freeform_enabled: freeformEnabled,
+    freeform_text: freeformEnabled ? (document.getElementById('memory-freeform').value || '').trim() : '',
+    latest_diagram_artifact: currentSessionMemory?.latest_diagram_artifact || null,
+  };
+
+  const errEl = document.getElementById('memory-error');
+  if (errEl) errEl.textContent = '';
+
+  try {
+    const res = await authFetch(`/api/sessions/${currentSession}/memory`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (errEl) errEl.textContent = data.error || 'Memory update failed.';
+      return;
+    }
+
+    currentSessionMemory = data.memory || null;
+    closeMemoryModal();
+    showToast('✅', 'Session memory saved.', 'success');
+  } catch (e) {
+    if (errEl) errEl.textContent = 'Could not save session memory.';
+  }
 }

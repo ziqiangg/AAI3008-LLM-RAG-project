@@ -115,6 +115,8 @@ class Config:
     CHUNK_SIZE      = 512  # Characters per chunk
     CHUNK_OVERLAP   = 50  # Overlap between chunks
     MAX_CONVERSATION_HISTORY = 10  # Last N messages to include in context
+    WORKING_MEMORY_USER_TURNS = 3  # Last N user turns in normal prompt mode
+    ENABLE_RAW_CONVERSATION_DEBUG = False  # Debug-only raw conversation/artifact injection
     
     # System Prompt Template
     SYSTEM_PROMPT = """You are an AI learning assistant helping students understand course materials.

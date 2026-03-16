@@ -57,6 +57,18 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Table: session_memory
+CREATE TABLE IF NOT EXISTS session_memory (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES sessions(id) ON DELETE CASCADE UNIQUE NOT NULL,
+    structured_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    freeform_text TEXT,
+    freeform_enabled INTEGER NOT NULL DEFAULT 0,
+    latest_diagram_artifact JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Table: document_chunks
 CREATE TABLE IF NOT EXISTS document_chunks (
     id SERIAL PRIMARY KEY,
@@ -84,6 +96,13 @@ BEFORE UPDATE ON users
 FOR EACH ROW 
 EXECUTE FUNCTION update_updated_at_column();
 
+-- Trigger: update_session_memory_updated_at
+-- Purpose: Keep session_memory.updated_at in sync on updates
+CREATE TRIGGER update_session_memory_updated_at
+BEFORE UPDATE ON session_memory
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
 -- Index: idx_document_chunks_embedding
 -- Purpose: Accelerates vector similarity searches using cosine distance
 -- Note: This index uses the HNSW algorithm which is efficient for approximate nearest neighbor searches
@@ -105,5 +124,8 @@ CREATE INDEX idx_document_chunks_document_id ON document_chunks (document_id);
 
 -- Index for faster session lookup by user
 CREATE INDEX idx_sessions_user_id ON sessions (user_id);
+
+-- Index for faster session memory lookup
+CREATE INDEX idx_session_memory_session_id ON session_memory (session_id);
 
 COMMIT;
