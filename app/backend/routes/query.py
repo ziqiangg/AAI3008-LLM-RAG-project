@@ -151,6 +151,9 @@ def ask_question():
         except Exception:
             pass  # Not authenticated, that's okay
 
+        if session_id and not current_user_id:
+            return jsonify({'error': 'Authentication required for session-based queries'}), 401
+
         with get_db_session() as db:
             conversation_history = []
             rewrite_context_history = []
@@ -172,8 +175,8 @@ def ask_question():
                 if not session:
                     return jsonify({'error': f'Session {session_id} not found'}), 404
 
-                # Verify session ownership if user is authenticated
-                if current_user_id and session.user_id != current_user_id:
+                # Session-bound queries are authenticated; enforce ownership.
+                if session.user_id != current_user_id:
                     return jsonify({'error': 'Access denied to this session'}), 403
 
                 # Get conversation history (last N messages)
@@ -246,6 +249,7 @@ def ask_question():
                 db_session=db,
                 question_embedding=question_embedding,
                 document_ids=document_ids,
+                user_id=current_user_id,
                 top_k=Config.TOP_K_RETRIEVAL
             )
             logger.info(f"[Query] Retrieved {len(retrieved_chunks)} chunks (docs)")
@@ -405,6 +409,7 @@ def ask_question():
                                         db_session=db,
                                         question_embedding=sub_embedding,
                                         document_ids=document_ids,
+                                        user_id=current_user_id,
                                         top_k=Config.TOP_K_RETRIEVAL
                                     )
                                     # Merge chunks, keeping best distance for duplicates
@@ -454,6 +459,7 @@ def ask_question():
                                     db_session=db,
                                     question_embedding=rewritten_embedding,
                                     document_ids=document_ids,
+                                    user_id=current_user_id,
                                     top_k=Config.TOP_K_RETRIEVAL
                                 )
                             # else: multi-query decomposition already set retry_chunks
@@ -513,6 +519,14 @@ def ask_question():
                     logger.info(f"[QueryRewrite] Feature is DISABLED in config")
                 elif not final_context_chunks:
                     logger.info(f"[QueryRewrite] Skipped - No chunks retrieved")
+
+            # Rewrite acceptance can replace final chunks; re-apply web-presence guarantee.
+            if web_enabled and web_chunks:
+                final_context_chunks = _ensure_web_coverage_in_context(
+                    question=question,
+                    final_context_chunks=final_context_chunks,
+                    web_chunks=web_chunks,
+                )
             
             # ═══════════════════════════════════════════════════════════
             # 6b. SUBJECT CLASSIFICATION
@@ -609,6 +623,13 @@ def ask_question():
             # 8. STORE MESSAGES IN DATABASE (if session exists)
             # ═══════════════════════════════════════════════════════════
             if session_id:
+                # Determine first-turn status before inserting new messages.
+                had_prior_messages = (
+                    db.query(Message)
+                    .filter_by(session_id=session_id)
+                    .count() > 0
+                )
+
                 # Store user message with rewrite metadata
                 user_msg_metadata = None
                 if query_was_rewritten:
@@ -681,8 +702,7 @@ def ask_question():
 
                 # Auto-generate session title from first question only
                 if session and session.title == 'New Chat':
-                    message_count = db.query(Message).filter_by(session_id=session_id).count()
-                    if message_count == 0:
+                    if not had_prior_messages:
                         session.title = question[:60] + ('...' if len(question) > 60 else '')
 
                 db.commit()

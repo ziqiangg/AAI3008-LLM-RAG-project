@@ -135,10 +135,37 @@ function getFilteredDocumentIds() {
         return false;
       })
       .map(doc => doc.id);
-    return docIds.length > 0 ? docIds : null;
+    // Preserve explicit empty scope so caller can show a helpful UI message.
+    return docIds;
   }
   
   return null;  // null = use all documents
+}
+
+function _addScopeSelection(scopeId) {
+  if (scopeId === null || scopeId === undefined) return;
+  if (!activeFilterFolders.includes(scopeId)) {
+    activeFilterFolders.push(scopeId);
+  }
+}
+
+function scopeIngestedDocumentsByDefault({ folderId = null, documentIds = [] } = {}) {
+  const normalizedFolderId = (folderId === null || folderId === undefined) ? null : Number(folderId);
+
+  if (normalizedFolderId !== null && Number.isFinite(normalizedFolderId)) {
+    _addScopeSelection(normalizedFolderId);
+  } else {
+    (Array.isArray(documentIds) ? documentIds : []).forEach((id) => {
+      const docId = Number(id);
+      if (Number.isFinite(docId)) {
+        _addScopeSelection(`unfiled-${docId}`);
+      }
+    });
+  }
+
+  saveFilterState();
+  renderDocumentsTree();
+  updateFilterBadge();
 }
 
 // ══════════════════════════════════════════════
@@ -729,6 +756,7 @@ async function ingestLinks() {
   // Handle ingestion results
   const ingestedCount = data.ingested?.length || 0;
   const rejectedCount = data.rejected?.length || 0;
+  const ingestedDocIds = (data.ingested || []).map(item => item.document_id).filter(Boolean);
   
   if (ingestedCount > 0 && rejectedCount === 0) {
     // All links ingested successfully
@@ -748,6 +776,13 @@ async function ingestLinks() {
     }).join("\n");
     showToast("❌", `All links rejected:\n${reasons}`, "error");
     return; // Don't clear pending links
+  }
+
+  if (ingestedCount > 0) {
+    scopeIngestedDocumentsByDefault({
+      folderId,
+      documentIds: folderId === null ? ingestedDocIds : [],
+    });
   }
   
   pendingLinks = [];
@@ -797,7 +832,16 @@ async function uploadDocumentFromSidebar(file) {
       return;
     }
 
-    showToast('✅', `${file.name} ingested!`, 'success');
+    const uploadedDoc = data.document || null;
+    const uploadedDocId = uploadedDoc?.id;
+    const uploadedFolderId = uploadedDoc?.folder_id;
+
+    scopeIngestedDocumentsByDefault({
+      folderId: uploadedFolderId,
+      documentIds: uploadedFolderId == null && uploadedDocId ? [uploadedDocId] : [],
+    });
+
+    showToast('✅', `${file.name} ingested and scoped.`, 'success');
     window._selectedDocumentFolderId = undefined;
     loadDocuments();  // refresh left sidebar document list
   } catch (e) {
@@ -1252,10 +1296,18 @@ async function moveDocumentToFolder(selectElement) {
     );
     
     await Promise.all(movePromises);
+
+    // Remove now-stale unfiled selections and scope to the destination folder.
+    unfiledDocs.forEach(doc => {
+      const unfiledDocId = `unfiled-${doc.id}`;
+      const idx = activeFilterFolders.indexOf(unfiledDocId);
+      if (idx >= 0) activeFilterFolders.splice(idx, 1);
+    });
+    scopeIngestedDocumentsByDefault({ folderId });
     
     await loadFolders();
     await loadDocuments();
-    showToast('✅', `Moved ${unfiledDocs.length} document(s) to "${folderName}".`, 'success');
+    showToast('✅', `Moved ${unfiledDocs.length} document(s) to "${folderName}" and scoped the folder.`, 'success');
   } catch (err) {
     showToast('❌', 'Failed to move documents.', 'error');
   } finally {
@@ -1622,6 +1674,14 @@ async function sendQuery() {
   const query    = textarea.value.trim();
   if (!query) return;
 
+  // Respect explicit scoping: if user selected scope but it resolves to no docs,
+  // show a helpful toast instead of silently broadening.
+  const filteredIds = getFilteredDocumentIds();
+  if (Array.isArray(filteredIds) && filteredIds.length === 0) {
+    showToast('ℹ️', 'No scoped documents selected. Tick at least one folder/document first.', 'warning');
+    return;
+  }
+
   document.getElementById('welcome')?.remove();
 
   await ensureSession();
@@ -1642,7 +1702,6 @@ async function sendQuery() {
     if (currentSession) payload.session_id = currentSession;
     
     // Auto-apply folder filter
-    const filteredIds = getFilteredDocumentIds();
     if (filteredIds && filteredIds.length > 0) {
       payload.document_ids = filteredIds;
     }

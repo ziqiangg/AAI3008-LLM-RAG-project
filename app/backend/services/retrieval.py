@@ -14,6 +14,7 @@ def retrieve_relevant_chunks(
     db_session: Session,
     question_embedding: List[float],
     document_ids: Optional[List[int]] = None,
+    user_id: Optional[int] = None,
     top_k: int = None
 ) -> List[Dict]:
     """
@@ -23,6 +24,8 @@ def retrieve_relevant_chunks(
         db_session: Active SQLAlchemy session
         question_embedding: Question embedding vector (384 dimensions)
         document_ids: Optional list of document IDs to filter by
+        user_id: Current user id for strict ownership scoping. If None, only
+             unowned documents (user_id IS NULL) are retrievable.
         top_k: Number of chunks to retrieve (defaults to Config.TOP_K_RETRIEVAL)
     
     Returns:
@@ -34,9 +37,10 @@ def retrieve_relevant_chunks(
     # Convert embedding list to pgvector format string
     embedding_str = '[' + ','.join(map(str, question_embedding)) + ']'
     
-    # Build query with optional document_ids filtering
+    # Build query with optional document_ids filtering + strict owner scoping
     if document_ids and len(document_ids) > 0:
-        query = text("""
+        if user_id is None:
+            query = text("""
             SELECT 
                 dc.id as chunk_id,
                 dc.document_id,
@@ -48,16 +52,12 @@ def retrieve_relevant_chunks(
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
             WHERE dc.document_id = ANY(:doc_ids)
+              AND d.user_id IS NULL
             ORDER BY distance ASC
             LIMIT :top_k
         """)
-        params = {
-            'embedding': embedding_str,
-            'doc_ids': document_ids,
-            'top_k': top_k
-        }
-    else:
-        query = text("""
+        else:
+            query = text("""
             SELECT 
                 dc.id as chunk_id,
                 dc.document_id,
@@ -68,13 +68,60 @@ def retrieve_relevant_chunks(
                 (dc.embedding <=> cast(:embedding as vector)) as distance
             FROM document_chunks dc
             JOIN documents d ON dc.document_id = d.id
+            WHERE dc.document_id = ANY(:doc_ids)
+              AND d.user_id = :user_id
             ORDER BY distance ASC
             LIMIT :top_k
         """)
         params = {
             'embedding': embedding_str,
+            'doc_ids': document_ids,
             'top_k': top_k
         }
+        if user_id is not None:
+            params['user_id'] = user_id
+    else:
+        if user_id is None:
+            query = text("""
+            SELECT 
+                dc.id as chunk_id,
+                dc.document_id,
+                d.filename,
+                dc.content,
+                dc.chunk_order,
+                dc.chunk_metadata,
+                (dc.embedding <=> cast(:embedding as vector)) as distance
+            FROM document_chunks dc
+            JOIN documents d ON dc.document_id = d.id
+            WHERE d.user_id IS NULL
+            ORDER BY distance ASC
+            LIMIT :top_k
+        """)
+            params = {
+                'embedding': embedding_str,
+                'top_k': top_k
+            }
+        else:
+            query = text("""
+            SELECT 
+                dc.id as chunk_id,
+                dc.document_id,
+                d.filename,
+                dc.content,
+                dc.chunk_order,
+                dc.chunk_metadata,
+                (dc.embedding <=> cast(:embedding as vector)) as distance
+            FROM document_chunks dc
+            JOIN documents d ON dc.document_id = d.id
+            WHERE d.user_id = :user_id
+            ORDER BY distance ASC
+            LIMIT :top_k
+        """)
+            params = {
+                'embedding': embedding_str,
+                'top_k': top_k,
+                'user_id': user_id,
+            }
     
     result = db_session.execute(query, params)
     rows = result.fetchall()

@@ -32,7 +32,7 @@ def generate_quiz():                          # ← route function keeps the nam
     }
     """
     try:
-        int(get_jwt_identity())
+        user_id = int(get_jwt_identity())
         data = request.get_json(silent=True) or {}
 
         # ── Validate config ───────────────────────────────────────
@@ -42,6 +42,7 @@ def generate_quiz():                          # ← route function keeps the nam
         topic         = data.get('topic', '').strip()
         document_ids  = data.get('document_ids') or []
         folder_ids    = data.get('folder_ids') or []  # NEW: folder filtering support
+        scoped_docs_explicitly_requested = ('document_ids' in data) or (bool(folder_ids))
         if difficulty not in ('easy', 'medium', 'hard'):
             return jsonify({'error': 'difficulty must be easy, medium, or hard'}), 400
         if question_type not in ('mcq', 'multi_select', 'mixed'):
@@ -58,7 +59,10 @@ def generate_quiz():                          # ← route function keeps the nam
                 from app.backend.models import Document as DocModel
                 folder_doc_rows = (
                     db.query(DocModel.id)
-                    .filter(DocModel.folder_id.in_(folder_ids))
+                    .filter(
+                        DocModel.folder_id.in_(folder_ids),
+                        DocModel.user_id == user_id,
+                    )
                     .all()
                 )
                 folder_doc_ids = [r.id for r in folder_doc_rows]
@@ -70,6 +74,9 @@ def generate_quiz():                          # ← route function keeps the nam
                     document_ids = folder_doc_ids
                 
                 logger.info(f"[Quiz] Folder filter: {folder_ids} → {len(document_ids)} docs")
+
+            if scoped_docs_explicitly_requested and len(document_ids) == 0:
+                return jsonify({'error': 'No scoped documents selected for quiz generation.'}), 200
             
             # ── Retrieve chunks ───────────────────────────────────
             top_k  = min(num_questions * 2, 15)
@@ -77,6 +84,7 @@ def generate_quiz():                          # ← route function keeps the nam
                 db_session         = db,
                 question_embedding = query_embedding,
                 document_ids       = document_ids if document_ids else None,
+                user_id            = user_id,
                 top_k              = top_k
             )
 
