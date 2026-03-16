@@ -1726,11 +1726,11 @@ async function sendQuery() {
           <div class="query-rewrite-details" id="${userMsgId}-rewrite" style="display: none;">
             <div class="rewrite-detail-item">
               <div class="rewrite-detail-label">Original:</div>
-              <div class="rewrite-detail-value">${escapeHtml(data.metadata.original_query)}</div>
+              <div class="rewrite-detail-value">${escapeHtml(formatRewriteText(data.metadata.original_query))}</div>
             </div>
             <div class="rewrite-detail-item">
               <div class="rewrite-detail-label">Rewritten to:</div>
-              <div class="rewrite-detail-value">${escapeHtml(data.metadata.rewritten_query)}</div>
+              <div class="rewrite-detail-value">${escapeHtml(formatRewriteText(data.metadata.rewritten_query))}</div>
             </div>
             <div class="rewrite-detail-item">
               <div class="rewrite-detail-label">Strategy:</div>
@@ -1787,11 +1787,11 @@ function appendMessage(role, docName, text, isLoading = false, rewriteMetadata =
       <div class="query-rewrite-details" id="${id}-rewrite" style="display: none;">
         <div class="rewrite-detail-item">
           <div class="rewrite-detail-label">Original:</div>
-          <div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.original_query)}</div>
+          <div class="rewrite-detail-value">${escapeHtml(formatRewriteText(rewriteMetadata.original_query))}</div>
         </div>
         <div class="rewrite-detail-item">
           <div class="rewrite-detail-label">Rewritten to:</div>
-          <div class="rewrite-detail-value">${escapeHtml(rewriteMetadata.rewritten_query || text)}</div>
+          <div class="rewrite-detail-value">${escapeHtml(formatRewriteText(rewriteMetadata.rewritten_query || text))}</div>
         </div>
         <div class="rewrite-detail-item">
           <div class="rewrite-detail-label">Strategy:</div>
@@ -1909,6 +1909,11 @@ function renderMarkdown(text) {
   }
   
   return tempDiv.innerHTML;
+}
+
+function formatRewriteText(value) {
+  if (value === null || value === undefined) return '';
+  return String(value);
 }
 
 function handleKey(e) {

@@ -391,8 +391,9 @@ def ask_question():
                                 original_query=question,
                                 num_variants=Config.QUERY_REWRITE_MAX_VARIANTS
                             )
-                            # For now, use first variant (future: multi-variant retrieval)
-                            rewritten_query = variants[0] if variants else question
+                            # expand_query_with_synonyms returns [original, alt1, alt2...].
+                            # Use the first alternative variant for rewrite/retrieval.
+                            rewritten_query = variants[1] if variants and len(variants) > 1 else question
                         elif strategy == 'decomposition':
                             sub_questions = query_rewriter.decompose_complex_query(question)
                             

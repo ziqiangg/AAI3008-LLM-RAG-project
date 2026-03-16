@@ -182,6 +182,13 @@ Rewritten question (one line only):"""
     
     def _clean_rewritten_query(self, text: str) -> str:
         """Clean up LLM-generated rewritten query."""
+        if not text:
+            return ''
+
+        # Strip markdown code fences if model returns wrapped text.
+        text = re.sub(r'^```[a-zA-Z0-9_-]*\s*', '', text.strip())
+        text = re.sub(r'\s*```$', '', text)
+
         # Remove quotes
         text = text.strip('"\'')
         
@@ -198,7 +205,10 @@ Rewritten question (one line only):"""
                 text = text[len(prefix):].strip()
                 text = text.strip(':').strip()
         
-        return text.strip()
+        # Normalize repeated whitespace while preserving line breaks.
+        lines = [re.sub(r'\s+', ' ', line).strip() for line in text.splitlines()]
+        lines = [line for line in lines if line]
+        return "\n".join(lines).strip()
     
     # ════════════════════════════════════════════════════════════════
     # STRATEGY 2: QUERY EXPANSION (Multi-Variant)
@@ -265,20 +275,79 @@ Output format (one variant per line):
             return [original_query]  # Fallback to original only
     
     def _parse_numbered_variants(self, text: str) -> List[str]:
-        """Parse numbered list from LLM response."""
+        """Parse numbered/bulleted variants from LLM response with resilient fallbacks."""
+        if not text:
+            return []
+
         variants = []
-        lines = text.strip().split('\n')
-        
-        for line in lines:
+
+        # Match one-item-per-line lists:
+        # 1. item / 1) item / - item / * item / • item
+        for line in text.strip().split('\n'):
             line = line.strip()
-            # Match patterns like "1. variant" or "1) variant" or "- variant"
-            match = re.match(r'^[\d\-\*\•]+[\.\)]\s*(.+)$', line)
+            match = re.match(r'^(?:\d+[\.)]|[-\*•])\s*(.+)$', line)
             if match:
-                variant = match.group(1).strip().strip('"\'')
+                variant = self._clean_rewritten_query(match.group(1).strip('"\''))
                 if variant and len(variant) > 5:
                     variants.append(variant)
-        
-        return variants
+
+        # Fallback: inline numbered list in a single line, e.g. "1. A 2. B 3. C"
+        if not variants:
+            inline_parts = [
+                self._clean_rewritten_query(p)
+                for p in re.split(r'\s*\d+[\.)]\s*', text)
+                if p and p.strip()
+            ]
+            variants = [p for p in inline_parts if len(p) > 5]
+
+        # Deduplicate while preserving order.
+        deduped = []
+        seen = set()
+        for v in variants:
+            k = v.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            deduped.append(v)
+
+        return deduped
+
+    def _heuristic_decompose_query(self, query: str) -> List[str]:
+        """Fallback decomposition when LLM output is under-segmented."""
+        q = query.strip().rstrip('?')
+        if not q:
+            return [query]
+
+        parts = re.split(r'\s+(?:and|&|vs\.?|versus)\s+', q, flags=re.IGNORECASE)
+        parts = [p.strip(' ,;') for p in parts if p.strip(' ,;')]
+
+        if len(parts) <= 1:
+            return [query]
+
+        lead = "Explain"
+        lower_q = q.lower()
+        if lower_q.startswith('what is'):
+            lead = "What is"
+        elif lower_q.startswith('what are'):
+            lead = "What are"
+        elif lower_q.startswith('describe'):
+            lead = "Describe"
+
+        sub_questions = []
+        for part in parts:
+            p = part.strip()
+            if not p:
+                continue
+            # Avoid doubling helper verbs if already phrased as a question fragment.
+            if re.match(r'^(what|how|why|when|where|which)\b', p, flags=re.IGNORECASE):
+                sq = p
+            else:
+                sq = f"{lead} {p}"
+            if not sq.endswith('?'):
+                sq += '?'
+            sub_questions.append(sq)
+
+        return sub_questions if len(sub_questions) > 1 else [query]
     
     # ════════════════════════════════════════════════════════════════
     # STRATEGY 3: QUERY DECOMPOSITION
@@ -327,6 +396,15 @@ Output format (numbered list, one per line):"""
             )
             
             sub_questions = self._parse_numbered_variants(response.text)
+
+            # Fallback for under-segmented outputs on clearly compound questions.
+            if len(sub_questions) <= 1 and self._is_compound_question(query):
+                fallback_parts = self._heuristic_decompose_query(query)
+                if len(fallback_parts) > len(sub_questions):
+                    logger.info(
+                        f"[QueryRewriter] Using heuristic decomposition fallback: {len(fallback_parts)} parts"
+                    )
+                    sub_questions = fallback_parts
             
             # If no sub-questions generated, return original
             if len(sub_questions) == 0:
@@ -387,13 +465,37 @@ Passage:"""
                 }
             )
             
-            hypothetical_doc = response.text.strip()
+            hypothetical_doc = self._clean_rewritten_query(response.text or "")
+
+            # Ensure HyDE output is substantive enough for retrieval + UI display.
+            # Retry once with stricter constraints if too short.
+            if len(hypothetical_doc.split()) < 18:
+                retry_prompt = f"""Write a factual passage that directly answers this query.
+Requirements:
+- 2 to 3 complete sentences
+- 60 to 100 words
+- Include concrete terminology from the query
+- No bullet points, no headings
+
+Query: \"{query}\"
+
+Passage:"""
+                retry = model.generate_content(
+                    retry_prompt,
+                    generation_config={
+                        'temperature': 0.4,
+                        'max_output_tokens': 260,
+                    }
+                )
+                retry_text = self._clean_rewritten_query(retry.text or "")
+                if len(retry_text.split()) >= len(hypothetical_doc.split()):
+                    hypothetical_doc = retry_text
             
             logger.info(f"[QueryRewriter] HyDE generated hypothetical document")
             logger.debug(f"  Query: {query}")
             logger.debug(f"  HyDE Doc: {hypothetical_doc[:150]}...")
             
-            return hypothetical_doc
+            return hypothetical_doc if hypothetical_doc else query
         
         except Exception as e:
             logger.error(f"[QueryRewriter] HyDE generation failed: {e}")
