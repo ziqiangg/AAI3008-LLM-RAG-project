@@ -10,6 +10,10 @@ DANGEROUS_PATTERNS = [
     r"ignore\s+(all\s+)?(previous|prior)\s+instructions",
     r"override\s+(system|developer)\s+(prompt|instruction)",
     r"reveal\s+(system|hidden)\s+(prompt|instruction)",
+    r"(what\s+is|show|reveal|tell\s+me|give\s+me|print|expose).{0,60}(api\s*key|secret|token|password|credential)",
+    r"\b(gemini|openai|serper|jwt|database|db)\b.{0,20}\b(api\s*key|secret|token|password|credential)\b",
+    r"\b(api[_\s-]?key|secret[_\s-]?key|access[_\s-]?token|bearer\s+token|jwt[_\s-]?secret|password[_\s-]?hash)\b",
+    r"\b(gemini_api_key|openai_api_key|serper_api_key|jwt_secret_key|db_password|database_url)\b",
     r"jailbreak",
     r"bypass\s+safety",
     r"disable\s+guardrails",
@@ -32,7 +36,18 @@ def _flatten_texts(payload: Dict[str, Any]) -> List[str]:
 
         unresolved = structured.get('unresolved_questions') or []
         if isinstance(unresolved, list):
-            texts.extend([x for x in unresolved if isinstance(x, str)])
+            for x in unresolved:
+                if isinstance(x, str):
+                    texts.append(x)
+                elif isinstance(x, dict):
+                    txt = x.get('text')
+                    if isinstance(txt, str):
+                        texts.append(txt)
+                    created_by = x.get('created_by')
+                    if isinstance(created_by, dict):
+                        qtxt = created_by.get('query_text')
+                        if isinstance(qtxt, str):
+                            texts.append(qtxt)
 
         entities = structured.get('entities_and_aliases') or []
         if isinstance(entities, list):
@@ -76,8 +91,24 @@ def validate_memory_payload(payload: Dict[str, Any]) -> Tuple[bool, str]:
         return False, 'Invalid structured_data: factual_summary_long must be a string.'
 
     unresolved = structured.get('unresolved_questions')
-    if not isinstance(unresolved, list) or not all(isinstance(x, str) for x in unresolved):
-        return False, 'Invalid structured_data: unresolved_questions must be a list of strings.'
+    if not isinstance(unresolved, list):
+        return False, 'Invalid structured_data: unresolved_questions must be a list.'
+    for idx, item in enumerate(unresolved):
+        if isinstance(item, str):
+            continue
+        if not isinstance(item, dict):
+            return False, f'Invalid unresolved_questions[{idx}]: must be a string or object.'
+        if not isinstance(item.get('text', ''), str) or not item.get('text', '').strip():
+            return False, f'Invalid unresolved_questions[{idx}].text: must be a non-empty string.'
+        status = item.get('status', 'open')
+        if status not in ('open', 'resolved'):
+            return False, f"Invalid unresolved_questions[{idx}].status: must be 'open' or 'resolved'."
+        created_by = item.get('created_by')
+        if created_by is not None and not isinstance(created_by, dict):
+            return False, f'Invalid unresolved_questions[{idx}].created_by: must be an object.'
+        resolved_by = item.get('resolved_by')
+        if resolved_by is not None and not isinstance(resolved_by, dict):
+            return False, f'Invalid unresolved_questions[{idx}].resolved_by: must be an object or null.'
 
     entities = structured.get('entities_and_aliases')
     if not isinstance(entities, list):
@@ -105,6 +136,12 @@ def validate_memory_payload(payload: Dict[str, Any]) -> Tuple[bool, str]:
         return False, 'factual_summary_short is too long (max 1000 chars).'
     if len(structured['factual_summary_long']) > 5000:
         return False, 'factual_summary_long is too long (max 5000 chars).'
+    if len(unresolved) > 40:
+        return False, 'unresolved_questions is too long (max 40 items).'
+    for idx, item in enumerate(unresolved):
+        txt = item if isinstance(item, str) else item.get('text', '')
+        if isinstance(txt, str) and len(txt) > 400:
+            return False, f'unresolved_questions[{idx}] is too long (max 400 chars).'
     if freeform_text and len(freeform_text) > 8000:
         return False, 'freeform_text is too long (max 8000 chars).'
 

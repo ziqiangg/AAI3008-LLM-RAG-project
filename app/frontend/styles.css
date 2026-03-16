@@ -1421,8 +1421,8 @@ QUIZ CONFIG MODAL
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 20px;
-  width: min(720px, 92vw);
-  max-height: 86vh;
+  width: min(1100px, 96vw);
+  height: min(92vh, 980px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1448,6 +1448,8 @@ QUIZ CONFIG MODAL
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -1510,6 +1512,25 @@ QUIZ CONFIG MODAL
 .memory-inline-editor button.danger:hover {
   border-color: var(--danger);
   color: var(--danger);
+}
+
+.memory-unresolved-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  line-height: 1.5;
+}
+
+.memory-unresolved-meta .status-open {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.memory-unresolved-meta .status-resolved {
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .memory-entity-grid {

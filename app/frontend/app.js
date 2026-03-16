@@ -2278,12 +2278,76 @@ function toggleMemoryFreeform() {
 
 function _normalizeUnresolvedQuestions(items) {
   if (Array.isArray(items)) {
-    return items.map(x => String(x || '').trim()).filter(Boolean);
+    return items
+      .map(item => {
+        if (typeof item === 'string') {
+          const text = item.trim();
+          if (!text) return null;
+          const now = new Date().toISOString();
+          return {
+            id: `legacy-${Math.random().toString(36).slice(2)}`,
+            text,
+            status: 'open',
+            created_at: now,
+            updated_at: now,
+            created_by: { query_text: text },
+            resolved_by: null,
+            manual_override: false,
+          };
+        }
+        if (!item || typeof item !== 'object') return null;
+        const text = String(item.text || '').trim();
+        if (!text) return null;
+        return {
+          id: String(item.id || `u-${Math.random().toString(36).slice(2)}`),
+          text,
+          status: item.status === 'resolved' ? 'resolved' : 'open',
+          created_at: item.created_at || new Date().toISOString(),
+          updated_at: item.updated_at || item.created_at || new Date().toISOString(),
+          created_by: (item.created_by && typeof item.created_by === 'object') ? item.created_by : {},
+          resolved_by: (item.resolved_by && typeof item.resolved_by === 'object') ? item.resolved_by : null,
+          manual_override: !!item.manual_override,
+        };
+      })
+      .filter(Boolean);
   }
   if (typeof items === 'string') {
-    return items.split('\n').map(x => x.trim()).filter(Boolean);
+    return items.split('\n').map(x => x.trim()).filter(Boolean).map(text => {
+      const now = new Date().toISOString();
+      return {
+        id: `legacy-${Math.random().toString(36).slice(2)}`,
+        text,
+        status: 'open',
+        created_at: now,
+        updated_at: now,
+        created_by: { query_text: text },
+        resolved_by: null,
+        manual_override: false,
+      };
+    });
   }
   return [];
+}
+
+function _renderUnresolvedMeta(item) {
+  const metaEl = document.getElementById('memory-unresolved-meta');
+  if (!metaEl) return;
+  if (!item) {
+    metaEl.textContent = 'Select an item to view provenance.';
+    return;
+  }
+
+  const createdQuery = item?.created_by?.query_text || 'n/a';
+  const createdAt = item?.created_at ? new Date(item.created_at).toLocaleString() : 'n/a';
+  const updatedAt = item?.updated_at ? new Date(item.updated_at).toLocaleString() : 'n/a';
+  const statusClass = item.status === 'resolved' ? 'status-resolved' : 'status-open';
+
+  metaEl.innerHTML = `
+    <div><strong>Status:</strong> <span class="${statusClass}">${escapeHtml(item.status || 'open')}</span></div>
+    <div><strong>Created:</strong> ${escapeHtml(createdAt)}</div>
+    <div><strong>Updated:</strong> ${escapeHtml(updatedAt)}</div>
+    <div><strong>Source query:</strong> ${escapeHtml(createdQuery)}</div>
+  `;
 }
 
 function _normalizeEntities(items) {
@@ -2308,13 +2372,15 @@ function _renderMemoryUnresolvedSelect() {
   memoryUnresolvedQuestions.forEach((q, i) => {
     const opt = document.createElement('option');
     opt.value = String(i);
-    opt.textContent = q;
+    const status = q?.status === 'resolved' ? 'resolved' : 'open';
+    opt.textContent = `[${status}] ${q?.text || ''}`;
     sel.appendChild(opt);
   });
 
   if (memoryUnresolvedQuestions.length === 0) {
     selectedMemoryUnresolvedIndex = -1;
     document.getElementById('memory-unresolved-input').value = '';
+    _renderUnresolvedMeta(null);
     return;
   }
 
@@ -2322,15 +2388,17 @@ function _renderMemoryUnresolvedSelect() {
     selectedMemoryUnresolvedIndex = 0;
   }
   sel.selectedIndex = selectedMemoryUnresolvedIndex;
-  document.getElementById('memory-unresolved-input').value = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] || '';
+  document.getElementById('memory-unresolved-input').value = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex]?.text || '';
+  _renderUnresolvedMeta(memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex]);
 }
 
 function onMemoryUnresolvedSelectChange() {
   const sel = document.getElementById('memory-unresolved-select');
   if (!sel) return;
   selectedMemoryUnresolvedIndex = sel.selectedIndex;
-  document.getElementById('memory-unresolved-input').value =
-    selectedMemoryUnresolvedIndex >= 0 ? (memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] || '') : '';
+  const item = selectedMemoryUnresolvedIndex >= 0 ? memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] : null;
+  document.getElementById('memory-unresolved-input').value = item?.text || '';
+  _renderUnresolvedMeta(item);
 }
 
 function upsertMemoryUnresolvedQuestion() {
@@ -2342,13 +2410,63 @@ function upsertMemoryUnresolvedQuestion() {
     return;
   }
 
+  const now = new Date().toISOString();
+
   if (selectedMemoryUnresolvedIndex >= 0 && selectedMemoryUnresolvedIndex < memoryUnresolvedQuestions.length) {
-    memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] = value;
+    const current = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex];
+    memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] = {
+      ...current,
+      text: value,
+      updated_at: now,
+      manual_override: true,
+    };
   } else {
-    memoryUnresolvedQuestions.push(value);
+    memoryUnresolvedQuestions.push({
+      id: `manual-${Math.random().toString(36).slice(2)}`,
+      text: value,
+      status: 'open',
+      created_at: now,
+      updated_at: now,
+      created_by: {
+        query_text: value,
+        source: 'manual',
+      },
+      resolved_by: null,
+      manual_override: true,
+    });
     selectedMemoryUnresolvedIndex = memoryUnresolvedQuestions.length - 1;
   }
 
+  if (errEl) errEl.textContent = '';
+  _renderMemoryUnresolvedSelect();
+}
+
+function setMemoryUnresolvedStatus(status) {
+  const errEl = document.getElementById('memory-error');
+  if (!['open', 'resolved'].includes(status)) return;
+  if (selectedMemoryUnresolvedIndex < 0 || selectedMemoryUnresolvedIndex >= memoryUnresolvedQuestions.length) {
+    if (errEl) errEl.textContent = 'Select an unresolved question first.';
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const item = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex];
+  const next = {
+    ...item,
+    status,
+    updated_at: now,
+    manual_override: true,
+  };
+  if (status === 'resolved') {
+    next.resolved_by = {
+      query_text: item?.text || '',
+      source: 'manual',
+      updated_at: now,
+    };
+  } else {
+    next.resolved_by = null;
+  }
+  memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] = next;
   if (errEl) errEl.textContent = '';
   _renderMemoryUnresolvedSelect();
 }

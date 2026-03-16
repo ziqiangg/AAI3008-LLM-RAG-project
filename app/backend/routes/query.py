@@ -8,13 +8,18 @@ from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from datetime import datetime
 
 from app.backend.database import get_db_session
-from app.backend.models import Session as ConvSession, Message
+from app.backend.models import Session as ConvSession, Message, SessionMemory
 from app.backend.services.injestion import get_embeddings
 from app.backend.services import retrieval, reranking, generation, classification,web_retrieval
 from app.backend.services.query_rewriter import get_query_rewriter
 from app.backend.config import Config
 from app.backend.services.tool_detection import detect_and_generate_tool
 from app.backend.services.tool_router import decide_tool_routing
+from app.backend.services.session_memory_updater import (
+    default_structured_memory,
+    normalize_structured_memory,
+    update_structured_memory_from_query,
+)
 
 import os
 print(">>> LOADED query.py from:", os.path.abspath(__file__), flush=True)
@@ -52,6 +57,35 @@ def _build_rewrite_context(conversation_history: list) -> list:
             'content': "Factual summary from previous assistant responses: " + " | ".join(assistant_facts)
         })
     return rewrite_ctx
+
+
+def _ensure_web_coverage_in_context(question: str, final_context_chunks: list, web_chunks: list) -> list:
+    """Ensure at least one web chunk is present when web retrieval returned results."""
+    if not final_context_chunks or not web_chunks:
+        return final_context_chunks
+
+    has_web = any((c.get('metadata') or {}).get('source_type') == 'web' for c in final_context_chunks)
+    if has_web:
+        return final_context_chunks
+
+    try:
+        top_web = reranking.rerank_chunks(
+            question=question,
+            chunks=web_chunks,
+            top_k=1,
+        )
+        if not top_web:
+            return final_context_chunks
+
+        # Keep context window size stable: replace the last slot with best web chunk.
+        merged = list(final_context_chunks)
+        if len(merged) >= Config.RERANK_TOP_K:
+            merged[-1] = top_web[0]
+        else:
+            merged.append(top_web[0])
+        return merged
+    except Exception:
+        return final_context_chunks
 
 
 @query_bp.route('', methods=['POST'])
@@ -268,6 +302,15 @@ def ask_question():
                 logger.warning(f"[Query] Unified reranking failed, using top retrieval results: {e}")
                 final_context_chunks = all_chunks[:Config.RERANK_TOP_K]
 
+            # If web retrieval was enabled and returned results, retain at least one web item
+            # in final context to avoid doc-only drift for explicit online/current requests.
+            if web_enabled and web_chunks:
+                final_context_chunks = _ensure_web_coverage_in_context(
+                    question=question,
+                    final_context_chunks=final_context_chunks,
+                    web_chunks=web_chunks,
+                )
+
             # ═══════════════════════════════════════════════════════════
             # 6a. ADAPTIVE QUERY REWRITING (Phase 1 & 2)
             #     Triggered when relevance scores are low or conversational context needed
@@ -321,6 +364,10 @@ def ask_question():
                                 conversation_history=rewrite_context_history,
                                 avg_rerank_score=avg_rerank_score
                             )
+                            # HyDE can distort intent for explicit diagram requests.
+                            # Keep query semantics closer to user phrasing for visual tasks.
+                            if routing_decision.diagram_requested_explicit and strategy == 'hyde':
+                                strategy = 'expansion'
                             logger.warning(f"[QueryRewrite] Auto-selected strategy: {strategy}")
                         else:
                             # Default to conversation context fusion
@@ -381,6 +428,8 @@ def ask_question():
                             hypothetical_doc = query_rewriter.generate_hypothetical_document(question)
                             # Embed the hypothetical document instead of query
                             rewritten_query = hypothetical_doc
+                            # For HyDE, rerank against the original question to preserve intent.
+                            use_original_for_rerank = True
                         else:
                             rewritten_query = question
                         
@@ -550,6 +599,10 @@ def ask_question():
                     "title": md.get("title"),                       # only for web
                 })
 
+            # Source mix metadata is reused for response + session-memory provenance.
+            num_doc_chunks = sum(1 for c in final_context_chunks if c.get('metadata', {}).get('source_type') != 'web')
+            num_web_chunks = len(final_context_chunks) - num_doc_chunks
+
             # ═══════════════════════════════════════════════════════════
             # 8. STORE MESSAGES IN DATABASE (if session exists)
             # ═══════════════════════════════════════════════════════════
@@ -582,6 +635,49 @@ def ask_question():
                     sources={'chunks': sources, 'tool': tool_output}
                 )
                 db.add(assistant_msg)
+                db.flush()
+
+                # Per-query memory auto-refresh with provenance.
+                mem = db.query(SessionMemory).filter_by(session_id=session_id).first()
+                if not mem:
+                    mem = SessionMemory(
+                        session_id=session_id,
+                        structured_data=default_structured_memory(),
+                        freeform_text='',
+                        freeform_enabled=0,
+                        latest_diagram_artifact=None,
+                    )
+                    db.add(mem)
+
+                mem.structured_data = update_structured_memory_from_query(
+                    structured_data=normalize_structured_memory(mem.structured_data),
+                    original_question=original_question,
+                    answer=answer,
+                    user_message_id=user_msg.id,
+                    assistant_message_id=assistant_msg.id,
+                    rewrite_strategy=rewrite_strategy_used,
+                    rewritten_query=accepted_rewritten_query,
+                    score_improvement=(rewritten_avg_score - original_avg_score) if query_was_rewritten else None,
+                    web_enabled=web_enabled,
+                    diagram_enabled=diagram_enabled,
+                    web_requested_explicit=routing_decision.web_requested_explicit,
+                    diagram_requested_explicit=routing_decision.diagram_requested_explicit,
+                    num_doc_chunks=num_doc_chunks,
+                    num_web_chunks=num_web_chunks,
+                )
+
+                if isinstance(tool_output, dict):
+                    t = tool_output.get('type')
+                    if t == 'mermaid' and tool_output.get('code'):
+                        mem.latest_diagram_artifact = {
+                            'type': 'mermaid',
+                            'mermaid': tool_output.get('code'),
+                        }
+                    elif t == 'desmos' and tool_output.get('expressions'):
+                        mem.latest_diagram_artifact = {
+                            'type': 'desmos',
+                            'desmos': tool_output.get('expressions'),
+                        }
 
                 # Auto-generate session title from first question only
                 if session and session.title == 'New Chat':
@@ -595,10 +691,6 @@ def ask_question():
             # ═══════════════════════════════════════════════════════════
             # 9. RETURN RESPONSE
             # ═══════════════════════════════════════════════════════════
-            # Calculate source type breakdown for metadata
-            num_doc_chunks = sum(1 for c in final_context_chunks if c.get('metadata', {}).get('source_type') != 'web')
-            num_web_chunks = len(final_context_chunks) - num_doc_chunks
-            
             return jsonify({
                 'answer': answer,
                 'sources': sources,

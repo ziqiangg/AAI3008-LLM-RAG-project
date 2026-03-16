@@ -324,10 +324,13 @@
       <label>Unresolved Questions</label>
       <p class="memory-field-hint">Store open questions as separate items. No fixed format is required.</p>
       <select id="memory-unresolved-select" class="memory-select" size="4" onchange="onMemoryUnresolvedSelectChange()"></select>
+      <div id="memory-unresolved-meta" class="memory-unresolved-meta">Select an item to view provenance.</div>
       <div class="memory-inline-editor">
         <input type="text" id="memory-unresolved-input" placeholder="Add or edit an unresolved question" />
         <button type="button" onclick="upsertMemoryUnresolvedQuestion()">Add / Update</button>
         <button type="button" class="danger" onclick="removeMemoryUnresolvedQuestion()">Remove</button>
+        <button type="button" onclick="setMemoryUnresolvedStatus('open')">Mark Open</button>
+        <button type="button" onclick="setMemoryUnresolvedStatus('resolved')">Mark Resolved</button>
       </div>
 
       <label>Entities and Aliases</label>

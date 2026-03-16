@@ -8,6 +8,13 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.backend.database import get_db_session as get_db
 from app.backend.models import Session as ConvSession, Message, SessionMemory
 from app.backend.services.memory_validator import validate_memory_payload
+from app.backend.services.session_memory_updater import (
+    default_structured_memory,
+    is_structured_memory_empty,
+    extract_latest_diagram_artifact,
+    build_bootstrap_structured_memory_from_messages,
+    normalize_structured_memory,
+)
 
 sessions_bp = Blueprint('sessions', __name__)
 
@@ -126,73 +133,19 @@ def get_messages(session_id):
 
 
 def _default_structured_memory():
-    return {
-        'factual_summary_short': '',
-        'factual_summary_long': '',
-        'unresolved_questions': [],
-        'entities_and_aliases': [],
-    }
+    return default_structured_memory()
 
 
 def _is_structured_memory_empty(structured):
-    if not isinstance(structured, dict):
-        return True
-    return (
-        not (structured.get('factual_summary_short') or '').strip()
-        and not (structured.get('factual_summary_long') or '').strip()
-        and not (structured.get('unresolved_questions') or [])
-        and not (structured.get('entities_and_aliases') or [])
-    )
+    return is_structured_memory_empty(structured)
 
 
 def _extract_latest_diagram_artifact(messages):
-    for msg in reversed(messages or []):
-        if getattr(msg, 'role', None) != 'assistant':
-            continue
-        src = msg.sources if isinstance(msg.sources, dict) else {}
-        tool = src.get('tool') if isinstance(src, dict) else None
-        if not isinstance(tool, dict):
-            continue
-
-        tool_type = tool.get('type')
-        if tool_type not in ('mermaid', 'desmos'):
-            continue
-
-        value = tool.get(tool_type)
-        if value:
-            return {
-                'type': tool_type,
-                tool_type: value,
-            }
-    return None
+    return extract_latest_diagram_artifact(messages)
 
 
 def _bootstrap_structured_memory_from_messages(messages):
-    structured = _default_structured_memory()
-    user_messages = [
-        (m.content or '').strip() for m in (messages or [])
-        if getattr(m, 'role', None) == 'user' and (m.content or '').strip()
-    ]
-    assistant_messages = [
-        (m.content or '').strip() for m in (messages or [])
-        if getattr(m, 'role', None) == 'assistant' and (m.content or '').strip()
-    ]
-
-    if assistant_messages:
-        structured['factual_summary_short'] = assistant_messages[-1][:280]
-        structured['factual_summary_long'] = '\n\n'.join(assistant_messages[-2:])[:1600]
-    elif user_messages:
-        structured['factual_summary_short'] = user_messages[-1][:280]
-        structured['factual_summary_long'] = '\n\n'.join(user_messages[-2:])[:1600]
-
-    unresolved = []
-    for msg in reversed(user_messages):
-        if msg.endswith('?') and msg not in unresolved:
-            unresolved.append(msg)
-        if len(unresolved) >= 5:
-            break
-    structured['unresolved_questions'] = list(reversed(unresolved))
-    return structured
+    return build_bootstrap_structured_memory_from_messages(messages)
 
 
 @sessions_bp.route('/<int:session_id>/memory', methods=['GET'])
@@ -223,6 +176,7 @@ def get_session_memory(session_id):
             db.add(mem)
             db.flush()
         else:
+            mem.structured_data = normalize_structured_memory(mem.structured_data)
             if _is_structured_memory_empty(mem.structured_data):
                 mem.structured_data = _bootstrap_structured_memory_from_messages(session_messages)
             if mem.latest_diagram_artifact is None:
@@ -251,7 +205,7 @@ def update_session_memory(session_id):
             mem = SessionMemory(session_id=session_id)
             db.add(mem)
 
-        structured_data = data.get('structured_data') or _default_structured_memory()
+        structured_data = normalize_structured_memory(data.get('structured_data') or _default_structured_memory())
         freeform_enabled = 1 if bool(data.get('freeform_enabled', False)) else 0
         freeform_text = data.get('freeform_text') if freeform_enabled else ''
 
