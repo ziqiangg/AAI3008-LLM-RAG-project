@@ -1545,8 +1545,9 @@ function renderToolPanel(tool) {
   }
 
   if (tool.type === 'desmos') {
+    const exprsJson = JSON.stringify(tool.expressions).replace(/"/g, '&quot;');
     return `
-      <div class="tool-panel" data-tool-id="${id}">
+      <div class="tool-panel" data-tool-id="${id}" data-expressions="${exprsJson}">
         <div class="tool-panel-header">
           <span>📈 Graph</span>
           <div class="download-group">
@@ -1554,17 +1555,7 @@ function renderToolPanel(tool) {
           </div>
         </div>
         <div class="desmos-container" id="${id}"></div>
-      </div>
-      <script>
-        (function() {
-          const el = document.getElementById('${id}');
-          const calc = Desmos.GraphingCalculator(el, { expressions: true, keypad: false });
-          window['desmos_${id}'] = calc;
-          ${JSON.stringify(tool.expressions)}.forEach(function(latex, i) {
-            calc.setExpression({ id: 'e' + i, latex: latex });
-          });
-        })();
-      <\/script>`;
+      </div>`;
   }
   return '';
 }
@@ -1573,6 +1564,27 @@ function initMermaidInElement(el) {
   // After HTML is in DOM, find any un-rendered .mermaid nodes and render them
   const nodes = el.querySelectorAll('.mermaid:not([data-processed])');
   if (nodes.length > 0) mermaid.run({ nodes: Array.from(nodes) });
+}
+
+function initDesmosInElement(el) {
+  if (typeof Desmos === 'undefined') return;
+  el.querySelectorAll('.desmos-container:not([data-desmos-init])').forEach(container => {
+    container.setAttribute('data-desmos-init', 'true');
+    const id = container.id;
+    const toolPanel = container.closest('[data-tool-id]');
+    if (!toolPanel) return;
+    // Get expressions from data attribute
+    const raw = toolPanel.getAttribute('data-expressions');
+    if (!raw) return;
+    try {
+      const expressions = JSON.parse(raw);
+      const calc = Desmos.GraphingCalculator(container, { expressions: true, keypad: false });
+      window['desmos_' + id] = calc;
+      expressions.forEach((latex, i) => {
+        calc.setExpression({ id: 'e' + i, latex });
+      });
+    } catch(e) { console.error('Desmos init failed:', e); }
+  });
 }
 
 async function downloadMermaid(id, format = 'svg') {
@@ -1824,10 +1836,11 @@ function updateMessage(id, text, toolHtml = '') {
   if (textEl) {
     textEl.innerHTML = renderMarkdown(text) + toolHtml;
     textEl.classList.remove('loading');
-    // Trigger Mermaid rendering on any diagram nodes just added to DOM
     initMermaidInElement(textEl);
+    // Initialize any Desmos containers just added to DOM
+    initDesmosInElement(textEl);
   }
-  return msgEl;  // return the message div for KaTeX re-render etc.
+  return msgEl;
 }
 
 function toggleRewriteDetails(messageId) {

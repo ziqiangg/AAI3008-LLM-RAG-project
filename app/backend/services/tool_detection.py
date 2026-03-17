@@ -15,16 +15,19 @@ logger = logging.getLogger(__name__)
 
 DETECTION_PROMPT = """You are a tool-routing assistant.
 
-Given a user question and document context, decide if a visual would help.
-Reply with ONLY one word — nothing else:
+Reply with ONLY one word — nothing else.
 
-  MERMAID  → if a diagram, flowchart, use case diagram, activity diagram,
-              sequence diagram, or process flow would help
-  DESMOS   → if a mathematical graph or equation plot would help  
-  NONE     → if plain text is sufficient
+Reply MERMAID if the question asks for any diagram, chart, flowchart, use case diagram,
+activity diagram, sequence diagram, or any visual representation.
+
+Reply DESMOS if the question contains any of these:
+- plot, graph, draw a function, visualize equation, show equation
+- any mathematical function like y=, f(x)=, sin, cos, tan, quadratic, linear
+- "what does X look like", "graph of X"
+
+Reply NONE only if it is purely a text/explanation question.
 
 Question: {question}
-Context: {context}
 
 Reply with exactly one word: MERMAID, DESMOS, or NONE"""
 

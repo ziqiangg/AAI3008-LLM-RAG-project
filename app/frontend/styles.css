@@ -1303,6 +1303,8 @@ USER DROPDOWN MENU
   margin: 4px 0;
 }
 
+.desmos-container { width: 100%; height: 340px; }
+
 /* ══════════════════════════════════════════
 ADD BUTTON + DROPDOWN MENU
 ══════════════════════════════════════════ */

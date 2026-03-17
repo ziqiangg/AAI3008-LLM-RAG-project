@@ -205,26 +205,26 @@ Answer based on the available document context, and note that current web inform
     return ""
 
 
-def get_diagram_prompt(diagram_enabled: bool = False, diagram_requested: bool = False) -> str:
+def get_diagram_prompt(diagram_enabled: bool = False, diagram_requested: bool = False, question: str = "") -> str:
     """
-    Generate diagram notice if user requests visual.
+    Generate diagram/graph notice if user requests visual or math plot.
     Modular component for diagram-related prompt engineering.
-    
-    Args:
-        diagram_enabled: Whether diagram mode is explicitly enabled (toggle)
-        diagram_requested: Whether user explicitly asked for a visual diagram
-    
-    Returns:
-        Diagram instruction string or empty string
     """
-    if diagram_enabled:
-        # Diagram rendering is available for this query.
-        return """=== DIAGRAM NOTICE ===
-Diagram generation is enabled for this query. If a visual is appropriate, a diagram will be generated and displayed below your response.
-Briefly describe what the diagram shows and explain the key components and relationships it contains."""
-    
-    return ""
+    if not diagram_enabled:
+        return ""
 
+    math_keywords = ['plot', 'graph y=', 'graph f(', 'y=', 'f(x)', 'sin(', 'cos(', 'tan(', 'quadratic', 'linear function', 'equation']
+    is_math = any(kw in question.lower() for kw in math_keywords)
+
+    if is_math:
+        return """=== GRAPH NOTICE ===
+A mathematical graph will be automatically generated and displayed below your response.
+Explain the function and its key properties (shape, intercepts, domain, range).
+Do NOT say you cannot plot graphs or that uploaded documents are needed for math."""
+
+    return """=== DIAGRAM NOTICE ===
+A diagram will be automatically generated and displayed below your response.
+Do NOT say you cannot draw diagrams. Briefly describe what the diagram shows and explain the key components and relationships."""
 
 def format_context_section(context_chunks: List[Dict]) -> str:
     """
@@ -410,7 +410,7 @@ def build_prompt(
             sections.append(subject_prompt)
 
     # 3b. DIAGRAM INSTRUCTION (if diagram mode enabled and question asks for diagram)
-    diagram_prompt = get_diagram_prompt(diagram_enabled, diagram_requested)
+    diagram_prompt = get_diagram_prompt(diagram_enabled, diagram_requested, question)
     if diagram_prompt:
         sections.append(diagram_prompt)
     
