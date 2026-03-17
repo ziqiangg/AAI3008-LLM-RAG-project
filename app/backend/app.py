@@ -72,6 +72,14 @@ def create_app(config_name=None):
     def health():
         return jsonify({'status': 'healthy', 'service': 'rag-backend'}), 200
 
+    # ── Client Config ─────────────────────────────────────────────
+    @app.route('/api/config/client')
+    def client_config():
+        from app.backend.config import Config
+        return jsonify({
+            'desmos_api_key': Config.DESMOS_API_KEY or 'dcb31709b452b1cf9dc26972add0fda6'
+        })
+
     return app
 
 

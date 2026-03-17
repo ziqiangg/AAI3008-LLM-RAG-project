@@ -84,6 +84,7 @@ class Config:
     
     # API Keys
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+    DESMOS_API_KEY = os.getenv('DESMOS_API_KEY', '')
     
     # Google Cloud Configuration (Optional)
     GCP_PROJECT_ID          = os.getenv('GCP_PROJECT_ID', '')
