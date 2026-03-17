@@ -733,6 +733,12 @@ def ask_question():
                     'diagram_enabled': diagram_enabled,
                     'web_requested_explicit': routing_decision.web_requested_explicit,
                     'diagram_requested_explicit': routing_decision.diagram_requested_explicit,
+                    'routing_source': routing_decision.routing_source,
+                    'intent_scores': routing_decision.intent_scores,
+                    'intent_thresholds': routing_decision.thresholds,
+                    'intent_model': routing_decision.model_name,
+                    'intent_inference_ok': routing_decision.inference_ok,
+                    'intent_inference_error': routing_decision.inference_error,
                     # Query rewriting metrics
                     'query_rewritten': query_was_rewritten,
                     'rewrite_strategy': rewrite_strategy_used,

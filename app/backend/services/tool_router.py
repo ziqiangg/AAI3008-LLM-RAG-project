@@ -1,36 +1,21 @@
-"""
-Centralized tool and retrieval routing decisions.
+"""Centralized tool and retrieval routing decisions.
 
-Single source of truth for query-intent keyword checks so routing logic is not
-duplicated across query handling and prompt assembly.
+Routing intent is inferred with a multi-label HF classifier.
 """
 from dataclasses import dataclass
 from typing import Optional
 
-
-WEB_INTENT_KEYWORDS = [
-    "search the web", "search online", "look up online", "lookup online",
-    "browse the web", "check the latest", "latest info", "verify online",
-    "current", "recent", "today", "news", "update",
-]
-
-DIAGRAM_INTENT_KEYWORDS = [
-    "draw", "diagram", "flowchart", "chart", "visuali", "illustrate", "sketch",
-    "show a", "create a", "mermaid", "desmos", "plot", "graph", "visualize"
-]
-
-
-def _contains_any_keyword(text: str, keywords: list[str]) -> bool:
-    q = (text or "").lower()
-    return any(k in q for k in keywords)
+from app.backend.services.intent_classifier import predict_intents, get_thresholds
 
 
 def user_requested_web(text: str) -> bool:
-    return _contains_any_keyword(text, WEB_INTENT_KEYWORDS)
+    result = predict_intents(text)
+    return bool(result.get('web_search', False))
 
 
 def user_requested_diagram(text: str) -> bool:
-    return _contains_any_keyword(text, DIAGRAM_INTENT_KEYWORDS)
+    result = predict_intents(text)
+    return bool(result.get('diagram_enabled', False))
 
 
 @dataclass
@@ -43,6 +28,12 @@ class RoutingDecision:
     diagram_requested_explicit: bool
     web_enabled: bool
     diagram_enabled: bool
+    routing_source: str
+    inference_ok: bool
+    intent_scores: dict
+    thresholds: dict
+    model_name: str
+    inference_error: Optional[str]
 
 
 def decide_tool_routing(
@@ -56,16 +47,17 @@ def decide_tool_routing(
     Produce a single routing decision for web retrieval and diagram mode.
 
     Notes:
-    - Web retrieval is enabled by toggle OR explicit web-request phrasing.
-        - Diagram mode is enabled by toggle OR explicit diagram-request phrasing,
-            matching web behavior so users can imply tool usage naturally.
+    - Web retrieval is enabled by toggle OR classifier intent.
+    - Diagram mode is enabled by toggle OR classifier intent.
+    - If inference fails, fallback is toggles-only (no keyword fallback).
     """
     effective = effective_query if effective_query is not None else original_query
+    thresholds = get_thresholds()
+    intent_result = predict_intents(original_query)
 
-    # Tool-selection intent must always reflect the user's original phrasing,
-    # not rewritten retrieval formulations (e.g., HyDE passages).
-    web_requested_explicit = user_requested_web(original_query)
-    diagram_requested_explicit = user_requested_diagram(original_query)
+    # Intent must reflect the original user phrasing, not rewritten variants.
+    web_requested_explicit = bool(intent_result.get('web_search', False))
+    diagram_requested_explicit = bool(intent_result.get('diagram_enabled', False))
 
     return RoutingDecision(
         original_query=original_query,
@@ -76,4 +68,10 @@ def decide_tool_routing(
         diagram_requested_explicit=diagram_requested_explicit,
         web_enabled=bool(web_toggle) or web_requested_explicit,
         diagram_enabled=bool(diagram_toggle) or diagram_requested_explicit,
+        routing_source=str(intent_result.get('routing_source', 'toggles_only_fallback')),
+        inference_ok=bool(intent_result.get('inference_ok', False)),
+        intent_scores=dict(intent_result.get('label_scores', {})),
+        thresholds=thresholds,
+        model_name=str(intent_result.get('model_name', '')),
+        inference_error=intent_result.get('error'),
     )

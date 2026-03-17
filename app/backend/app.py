@@ -4,9 +4,11 @@ from flask_jwt_extended import JWTManager
 from app.backend.config import config
 from app.backend.database import close_db_session
 import os
+import logging
 from datetime import datetime, timedelta
 
 jwt = JWTManager()
+logger = logging.getLogger(__name__)
 
 def create_app(config_name=None):
     if config_name is None:
@@ -33,6 +35,17 @@ def create_app(config_name=None):
     register_blueprints(app)
     register_error_handlers(app)
     register_teardown_handlers(app)
+
+    # Warm-load intent routing model at startup to reduce first-request latency.
+    try:
+        from app.backend.services.intent_classifier import warm_load_intent_classifier
+        ok = warm_load_intent_classifier()
+        if ok:
+            logger.info("[Startup] Intent classifier warm-loaded successfully")
+        else:
+            logger.warning("[Startup] Intent classifier warm-load failed; using toggles-only fallback until available")
+    except Exception as e:
+        logger.warning(f"[Startup] Intent classifier warm-load error: {e}")
 
     # ── Frontend ──────────────────────────────────────────────────
     @app.route('/')

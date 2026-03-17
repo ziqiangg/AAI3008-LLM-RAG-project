@@ -10,6 +10,15 @@ load_dotenv()
 
 class Config:
     """Base configuration"""
+    # Intent Routing (HF multi-label classifier)
+    INTENT_ROUTING_ENABLED = True
+    INTENT_MODEL_NAME = 'aitraineracc/intent-classification-multilabel'
+    INTENT_MODEL_DEVICE = 'cpu'   # 'cpu' | 'cuda' | 'auto'
+    INTENT_MODEL_MAX_LENGTH = 256
+    # Thresholds from model config.json
+    INTENT_THRESHOLD_WEB = 0.35
+    INTENT_THRESHOLD_DIAGRAM = 0.6
+
     #allowlist for web search
     #Reject non-HTTPS URLs (if WEB_REQUIRE_HTTPS).
     #Reject domains not in allowlist (including subdomain handling).
