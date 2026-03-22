@@ -319,53 +319,111 @@
 <!-- Session Memory Modal -->
 <div id="memory-modal-overlay" class="modal-overlay">
   <div id="memory-modal">
-    <div class="modal-header">
-      <h2>Session Memory</h2>
+    <div class="memory-modal-header">
+      <div>
+        <h2>Session Memory</h2>
+        <p class="memory-subtitle">Review and refine what the assistant remembers for this session.</p>
+      </div>
       <button class="memory-modal-close" onclick="closeMemoryModal()">✕</button>
     </div>
+
     <div class="modal-content memory-modal-content">
-      <label>Factual Summary (Short)</label>
-      <textarea id="memory-short" rows="3" placeholder="Short factual summary"></textarea>
+      <section class="memory-section">
+        <div class="memory-section-head">
+          <div>
+            <h3>Factual Summary</h3>
+            <p>Store a short snapshot and a more complete version of the session context.</p>
+          </div>
+        </div>
 
-      <label>Factual Summary (Long)</label>
-      <textarea id="memory-long" rows="6" placeholder="Longer factual summary"></textarea>
+        <div class="memory-field-group">
+          <label for="memory-short">Short Summary</label>
+          <textarea id="memory-short" rows="3" placeholder="Brief factual summary"></textarea>
+        </div>
 
-      <label>Unresolved Questions</label>
-      <p class="memory-field-hint">Store open questions as separate items. No fixed format is required.</p>
-      <select id="memory-unresolved-select" class="memory-select" size="4" onchange="onMemoryUnresolvedSelectChange()"></select>
-      <div id="memory-unresolved-meta" class="memory-unresolved-meta">Select an item to view provenance.</div>
-      <div class="memory-inline-editor">
-        <input type="text" id="memory-unresolved-input" placeholder="Add or edit an unresolved question" />
-        <button type="button" onclick="upsertMemoryUnresolvedQuestion()">Add / Update</button>
-        <button type="button" class="danger" onclick="removeMemoryUnresolvedQuestion()">Remove</button>
-        <button type="button" onclick="setMemoryUnresolvedStatus('open')">Mark Open</button>
-        <button type="button" onclick="setMemoryUnresolvedStatus('resolved')">Mark Resolved</button>
-      </div>
+        <div class="memory-field-group">
+          <label for="memory-long">Detailed Summary</label>
+          <textarea id="memory-long" rows="6" placeholder="Longer factual summary"></textarea>
+        </div>
+      </section>
 
-      <label>Entities and Aliases</label>
-      <p class="memory-field-hint">Purpose: preserve canonical names and alternate terms so future retrieval and rewriting can resolve references consistently.</p>
-      <select id="memory-entities-select" class="memory-select" size="4" onchange="onMemoryEntitySelectChange()"></select>
-      <div class="memory-entity-grid">
-        <input type="text" id="memory-entity-name" placeholder="Entity name (example: CNN)" />
-        <input type="text" id="memory-entity-aliases" placeholder="Aliases (comma separated, optional)" />
-      </div>
-      <div class="memory-inline-editor">
-        <button type="button" onclick="upsertMemoryEntity()">Add / Update</button>
-        <button type="button" class="danger" onclick="removeMemoryEntity()">Remove</button>
-      </div>
+      <section class="memory-section">
+        <div class="memory-section-head">
+          <div>
+            <h3>Unresolved Questions</h3>
+            <p>Track questions that are still open, pending, or already resolved.</p>
+          </div>
+        </div>
 
-      <label class="memory-toggle-row">
-        <input type="checkbox" id="memory-freeform-toggle" onchange="toggleMemoryFreeform()" />
-        Enable Freeform Edit
-      </label>
+        <div id="memory-unresolved-list" class="memory-question-list"></div>
 
-      <label>Freeform Notes (optional)</label>
-      <textarea id="memory-freeform" rows="5" placeholder="Freeform memory notes (only when enabled)" disabled></textarea>
+        <div id="memory-unresolved-meta" class="memory-unresolved-meta">
+          Select an item to view provenance.
+        </div>
+
+        <div class="memory-field-group">
+          <label for="memory-unresolved-input">Question</label>
+          <input type="text" id="memory-unresolved-input" placeholder="Add or edit an unresolved question" />
+        </div>
+
+        <div class="memory-inline-editor memory-actions-row">
+          <button type="button" class="memory-btn memory-btn-primary" onclick="upsertMemoryUnresolvedQuestion()">Add / Update</button>
+          <button type="button" class="memory-btn" onclick="setMemoryUnresolvedStatus('open')">Mark Open</button>
+          <button type="button" class="memory-btn" onclick="setMemoryUnresolvedStatus('resolved')">Mark Resolved</button>
+          <button type="button" class="memory-btn memory-btn-danger" onclick="removeMemoryUnresolvedQuestion()">Remove</button>
+        </div>
+      </section>
+
+      <section class="memory-section">
+        <div class="memory-section-head">
+          <div>
+            <h3>Entities and Aliases</h3>
+            <p>Keep canonical names and alternative references consistent across the session.</p>
+          </div>
+        </div>
+
+        <select id="memory-entities-select" class="memory-select" size="5" onchange="onMemoryEntitySelectChange()"></select>
+
+        <div class="memory-entity-grid">
+          <div class="memory-field-group">
+            <label for="memory-entity-name">Entity Name</label>
+            <input type="text" id="memory-entity-name" placeholder="Example: CNN" />
+          </div>
+
+          <div class="memory-field-group">
+            <label for="memory-entity-aliases">Aliases</label>
+            <input type="text" id="memory-entity-aliases" placeholder="Comma separated aliases" />
+          </div>
+        </div>
+
+        <div class="memory-inline-editor memory-actions-row">
+          <button type="button" class="memory-btn memory-btn-primary" onclick="upsertMemoryEntity()">Add / Update</button>
+          <button type="button" class="memory-btn memory-btn-danger" onclick="removeMemoryEntity()">Remove</button>
+        </div>
+      </section>
+
+      <section class="memory-section">
+        <div class="memory-section-head">
+          <div>
+            <h3>Freeform Notes</h3>
+            <p>Use this only when you want manual notes outside the structured fields.</p>
+          </div>
+        </div>
+
+        <label class="memory-toggle-row">
+          <input type="checkbox" id="memory-freeform-toggle" onchange="toggleMemoryFreeform()" />
+          Enable freeform editing
+        </label>
+
+        <textarea id="memory-freeform" rows="5" placeholder="Optional freeform memory notes" disabled></textarea>
+      </section>
     </div>
+
     <div class="modal-error" id="memory-error"></div>
-    <div class="modal-actions">
-      <button onclick="closeMemoryModal()">Cancel</button>
-      <button onclick="saveSessionMemory()">Save</button>
+
+    <div class="memory-footer">
+      <button class="memory-footer-btn" onclick="closeMemoryModal()">Cancel</button>
+      <button class="memory-footer-btn memory-footer-save" onclick="saveSessionMemory()">Save</button>
     </div>
   </div>
 </div>
@@ -415,7 +473,29 @@
     <button id="quiz-retry-btn" onclick="openQuizModal()">🔄 New Quiz</button>
   </div>
 </div>
+<!-- Quiz review -->
+<div id="quiz-review-modal-overlay" class="modal-overlay">
+  <div id="quiz-review-modal" class="quiz-review-modal">
+    <div class="quiz-review-modal-header">
+      <h3>Question Review</h3>
+      <button class="quiz-review-close" onclick="closeQuizReviewModal()">✕</button>
+    </div>
 
+    <div class="quiz-review-modal-body">
+      <div class="quiz-review-badges">
+        <span id="quiz-review-type" class="quiz-review-badge">single answer</span>
+      </div>
+
+      <div id="quiz-review-question" class="quiz-review-question"></div>
+      <div id="quiz-review-options" class="quiz-review-options"></div>
+
+      <div class="quiz-review-legend">
+        <span><span class="legend-dot user"></span> Your selection</span>
+        <span><span class="legend-dot correct"></span> Correct answer</span>
+      </div>
+    </div>
+  </div>
+</div>
 <!-- ═══════════════════════════════════════════════
      SCRIPTS  - Performance-optimized separate files
 ════════════════════════════════════════════════ -->

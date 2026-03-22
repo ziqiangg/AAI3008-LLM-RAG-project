@@ -26,7 +26,111 @@ def configure_gemini():
     if not _configured:
         genai.configure(api_key=Config.GEMINI_API_KEY)
         _configured = True
+def _strip_code_fences(text: str) -> str:
+    if not text:
+        return ""
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
 
+
+def _extract_first_json_object(text: str) -> str:
+    """
+    Extract the first balanced JSON object from model output.
+    Handles markdown fences and extra prose around the JSON.
+    """
+    text = _strip_code_fences(text)
+    start = text.find("{")
+    if start == -1:
+        return text
+
+    depth = 0
+    in_string = False
+    escape = False
+
+    for i in range(start, len(text)):
+        ch = text[i]
+
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+
+    return text[start:]
+
+
+def _normalize_question(question: dict, idx: int) -> dict:
+    q_type = (question.get("type") or "mcq").strip().lower()
+    if q_type not in {"mcq", "multi_select"}:
+        q_type = "mcq"
+
+    options = question.get("options") or []
+    if not isinstance(options, list):
+        options = []
+
+    options = [str(opt).strip() for opt in options][:4]
+
+    correct = question.get("correct") or []
+    if not isinstance(correct, list):
+        correct = [str(correct).strip()] if correct else []
+
+    correct = [str(c).strip().replace(".", "") for c in correct if str(c).strip()]
+    explanation = str(question.get("explanation") or "").strip()
+    question_text = str(question.get("question") or "").strip()
+
+    return {
+        "id": idx,
+        "type": q_type,
+        "question": question_text,
+        "options": options,
+        "correct": correct,
+        "explanation": explanation,
+    }
+
+
+def _validate_quiz_data(quiz_data: dict, expected_questions: int) -> dict:
+    questions = quiz_data.get("questions", [])
+    if not isinstance(questions, list) or not questions:
+        raise ValueError("Model returned no questions.")
+
+    normalized = []
+    for idx, q in enumerate(questions, start=1):
+        if not isinstance(q, dict):
+            continue
+        nq = _normalize_question(q, idx)
+
+        if not nq["question"]:
+            continue
+        if len(nq["options"]) != 4:
+            continue
+        if not nq["correct"]:
+            continue
+
+        if nq["type"] == "mcq" and len(nq["correct"]) != 1:
+            continue
+        if nq["type"] == "multi_select" and len(nq["correct"]) not in {2, 3}:
+            continue
+
+        normalized.append(nq)
+
+    if not normalized:
+        raise ValueError("Model returned questions, but all were invalid after validation.")
+
+    return {"questions": normalized[:expected_questions]}
 
 def generate_answer(
     question: str,
@@ -132,7 +236,7 @@ def build_quiz_prompt(
     difficulty_guide = {
         'easy':   'Direct recall of explicit facts stated in the context.',
         'medium': 'Require understanding and inference from the context.',
-        'hard':   'Require analysis, application, or synthesis across multiple pieces of context. Use challenging distractors.',
+        'hard':   'Require analysis, application, or synthesis across multiple pieces of context. Keep question stems concise, each option under 18 words, and explanation under 20 words.',
     }[difficulty]
 
     type_guide = {
@@ -152,7 +256,19 @@ Generate exactly {num_questions} questions based ONLY on the context provided be
 DIFFICULTY: {difficulty.upper()} — {difficulty_guide}
 FORMAT: {type_guide}{topic_instruction}
 
-RULES:
+STRICT OUTPUT RULES:
+- Return ONLY a single valid JSON object.
+- Do NOT use markdown fences.
+- Do NOT include any text before or after the JSON.
+- Every string must be valid JSON with escaped quotes where needed.
+- Keep each explanation to ONE short sentence, max 25 words.
+- Do not include line breaks inside JSON string values. 
+- Keep each question under 24 words.
+- Keep each option under 18 words.
+- Keep each explanation under 20 words.
+- Avoid verbose wording and repeated phrases.
+
+QUESTION RULES:
 - Exactly 4 options per question, labelled A, B, C, D.
 - MCQ: exactly 1 correct answer in the "correct" list.
 - Multi-select: 2 or 3 correct answers in the "correct" list.
@@ -240,7 +356,14 @@ def generate_quiz(
     questions = quiz_data.get('questions', [])
     if not questions:
         raise ValueError('Model returned no questions.')
+    for q in questions:
+        raw_type = str(q.get('type', 'mcq')).strip().lower()
+        normalized_type = raw_type.replace('-', '_').replace(' ', '_')
 
+        if normalized_type == 'multi_select':
+            q['type'] = 'multi_select'
+        else:
+            q['type'] = 'mcq'
     return {
         'questions':  questions,
         'model_used': Config.LLM_MODEL,

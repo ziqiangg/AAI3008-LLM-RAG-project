@@ -19,7 +19,7 @@ let currentSession = null;      // active session id
 let currentSessionMemory = null;
 let memoryUnresolvedQuestions = [];
 let memoryEntities = [];
-let selectedMemoryUnresolvedIndex = -1;
+let selectedUnresolvedQuestionIndex = -1;
 let selectedMemoryEntityIndex = -1;
 let toastTimeout   = null;      // toast notification timer
 let stageTimer     = null;      // loading stage progress timer
@@ -31,7 +31,6 @@ let activeFilterFolders = [];   // [folder_id, ...] - persistent folder filter
 let collapsedFolders = new Set(); // Set of collapsed folder IDs
 const FILTER_STORAGE_KEY = 'rag_folder_filter';
 const COLLAPSED_STORAGE_KEY = 'rag_collapsed_folders';
-
 // ── Bootstrap ─────────────────────────────────
 window.addEventListener('load', () => {
   loadFilterState();
@@ -385,7 +384,9 @@ function showUserMenu() {
   dropdown.style.top  = (rect.bottom + window.scrollY + 8) + 'px';
   dropdown.style.right = (window.innerWidth - rect.right) + 'px';
   dropdown.innerHTML = `
-    <button class="user-dropdown-item" onclick="openMemoryModal()">🧠 Session Memory</button>
+    ${currentSession ? `
+      <button class="user-dropdown-item" onclick="openMemoryModal()">🧠 Session Memory</button>
+    ` : ''}
     <div class="user-dropdown-divider"></div>
     <button class="user-dropdown-item" onclick="confirmLogout()">🚪 Logout</button>
     <div class="user-dropdown-divider"></div>
@@ -2122,7 +2123,10 @@ async function generateQuiz() {
   const errEl = document.getElementById('quiz-error');
   errEl.textContent = '';
 
-  const numQ  = parseInt(document.getElementById('quiz-num').value) || 5;
+  const quizNumInput = document.getElementById('quiz-num');
+  const rawNumQ = parseInt(quizNumInput.value, 10);
+  const numQ = Math.min(20, Math.max(1, Number.isFinite(rawNumQ) ? rawNumQ : 5));
+  quizNumInput.value = numQ;
   const diff  = document.getElementById('quiz-difficulty').value;
   const qType = document.getElementById('quiz-type').value;
 
@@ -2156,9 +2160,9 @@ async function generateQuiz() {
       }),
     });
     const data = await res.json();
-
+    window.currentQuizData = data;
     if (!res.ok) {
-      errEl.textContent = data.error || 'Failed to generate quiz.';
+      errEl.textContent = data.error || data.details || 'Failed to generate quiz.';
       return;
     }
 
@@ -2199,9 +2203,16 @@ function _startQuiz(quiz) {
     container.appendChild(_buildQuestionCard(q, idx + 1));
   });
 }
+function isMultiSelectType(type) {
+  const normalized = String(type || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
 
+  return normalized === 'multi_select';
+}
 function _buildQuestionCard(q, num) {
-  const isMulti = q.type === 'multi_select';
+  const isMulti = isMultiSelectType(q.type);
   const card    = document.createElement('div');
   card.className = 'quiz-card';
   card.id = `quiz-card-${q.id}`;
@@ -2226,6 +2237,7 @@ function _buildQuestionCard(q, num) {
     <div class="quiz-explanation" id="quiz-exp-${q.id}">
       💡 ${q.explanation}
     </div>
+    
   `;
   return card;
 }
@@ -2249,7 +2261,73 @@ function selectOption(qId, label, isMulti) {
     el.classList.toggle('selected', answers.has(optLabel));
   });
 }
+function normalizeQuizType(type) {
+  return String(type || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+}
 
+function getSelectedAnswersForQuestion(questionId) {
+  const raw = _quizAnswers?.[questionId];
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (raw instanceof Set) return Array.from(raw);
+  return [raw];
+}
+function openQuizReviewModal(questionId) {
+  const overlay = document.getElementById('quiz-review-modal-overlay');
+  const qEl = document.getElementById('quiz-review-question');
+  const optsEl = document.getElementById('quiz-review-options');
+  const typeEl = document.getElementById('quiz-review-type');
+
+  if (!overlay || !qEl || !optsEl || !typeEl) return;
+  if (!_currentQuiz?.questions?.length) return;
+
+  const q = _currentQuiz.questions.find(x => String(x.id) === String(questionId));
+  if (!q) return;
+
+  const selected = new Set(
+    getSelectedAnswersForQuestion(q.id).map(x => String(x).replace('.', '').trim())
+  );
+  const correct = new Set(
+    (q.correct || []).map(x => String(x).replace('.', '').trim())
+  );
+  const isMulti = normalizeQuizType(q.type) === 'multi_select';
+
+  typeEl.textContent = isMulti ? 'multi-select' : 'single answer';
+  qEl.textContent = q.question || '';
+  optsEl.innerHTML = '';
+
+  (q.options || []).forEach((opt) => {
+    const label = String(opt).charAt(0);
+    const text = String(opt).slice(3);
+    const isUser = selected.has(label);
+    const isCorrect = correct.has(label);
+
+    const row = document.createElement('div');
+    row.className = 'quiz-review-option';
+    if (isUser) row.classList.add('user-picked');
+    if (isCorrect) row.classList.add('correct-answer');
+
+    row.innerHTML = `
+      <div class="quiz-review-option-label">${label}</div>
+      <div class="quiz-review-option-text">
+        <div>${text}</div>
+        <div class="quiz-review-option-tags">
+          ${isUser ? `<span class="quiz-review-tag user">Your answer</span>` : ''}
+          ${isCorrect ? `<span class="quiz-review-tag correct">Correct</span>` : ''}
+        </div>
+      </div>
+    `;
+
+    optsEl.appendChild(row);
+  });
+
+  overlay.classList.add('visible');
+}
+
+function closeQuizReviewModal() {
+  const overlay = document.getElementById('quiz-review-modal-overlay');
+  if (overlay) overlay.classList.remove('visible');
+}
 function submitQuiz() {
   if (!_currentQuiz) return;
   _quizSubmitted = true;
@@ -2325,6 +2403,11 @@ function _showResults(correct, total) {
         Correct: <strong style="color:var(--accent)">${q.correct.join(', ')}</strong>
       </div>
       <div class="quiz-explanation visible">💡 ${q.explanation}</div>
+      <div class="quiz-result-actions">
+        <button class="quiz-view-btn" onclick="openQuizReviewModal(${q.id})">
+          View Question
+        </button>
+      </div>
     `;
     review.appendChild(card);
   });
@@ -2441,125 +2524,7 @@ function _normalizeEntities(items) {
     .filter(item => item.entity);
 }
 
-function _renderMemoryUnresolvedSelect() {
-  const sel = document.getElementById('memory-unresolved-select');
-  if (!sel) return;
-  sel.innerHTML = '';
 
-  memoryUnresolvedQuestions.forEach((q, i) => {
-    const opt = document.createElement('option');
-    opt.value = String(i);
-    const status = q?.status === 'resolved' ? 'resolved' : 'open';
-    opt.textContent = `[${status}] ${q?.text || ''}`;
-    sel.appendChild(opt);
-  });
-
-  if (memoryUnresolvedQuestions.length === 0) {
-    selectedMemoryUnresolvedIndex = -1;
-    document.getElementById('memory-unresolved-input').value = '';
-    _renderUnresolvedMeta(null);
-    return;
-  }
-
-  if (selectedMemoryUnresolvedIndex < 0 || selectedMemoryUnresolvedIndex >= memoryUnresolvedQuestions.length) {
-    selectedMemoryUnresolvedIndex = 0;
-  }
-  sel.selectedIndex = selectedMemoryUnresolvedIndex;
-  document.getElementById('memory-unresolved-input').value = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex]?.text || '';
-  _renderUnresolvedMeta(memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex]);
-}
-
-function onMemoryUnresolvedSelectChange() {
-  const sel = document.getElementById('memory-unresolved-select');
-  if (!sel) return;
-  selectedMemoryUnresolvedIndex = sel.selectedIndex;
-  const item = selectedMemoryUnresolvedIndex >= 0 ? memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] : null;
-  document.getElementById('memory-unresolved-input').value = item?.text || '';
-  _renderUnresolvedMeta(item);
-}
-
-function upsertMemoryUnresolvedQuestion() {
-  const input = document.getElementById('memory-unresolved-input');
-  const errEl = document.getElementById('memory-error');
-  const value = (input?.value || '').trim();
-  if (!value) {
-    if (errEl) errEl.textContent = 'Please enter a question first.';
-    return;
-  }
-
-  const now = new Date().toISOString();
-
-  if (selectedMemoryUnresolvedIndex >= 0 && selectedMemoryUnresolvedIndex < memoryUnresolvedQuestions.length) {
-    const current = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex];
-    memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] = {
-      ...current,
-      text: value,
-      updated_at: now,
-      manual_override: true,
-    };
-  } else {
-    memoryUnresolvedQuestions.push({
-      id: `manual-${Math.random().toString(36).slice(2)}`,
-      text: value,
-      status: 'open',
-      created_at: now,
-      updated_at: now,
-      created_by: {
-        query_text: value,
-        source: 'manual',
-      },
-      resolved_by: null,
-      manual_override: true,
-    });
-    selectedMemoryUnresolvedIndex = memoryUnresolvedQuestions.length - 1;
-  }
-
-  if (errEl) errEl.textContent = '';
-  _renderMemoryUnresolvedSelect();
-}
-
-function setMemoryUnresolvedStatus(status) {
-  const errEl = document.getElementById('memory-error');
-  if (!['open', 'resolved'].includes(status)) return;
-  if (selectedMemoryUnresolvedIndex < 0 || selectedMemoryUnresolvedIndex >= memoryUnresolvedQuestions.length) {
-    if (errEl) errEl.textContent = 'Select an unresolved question first.';
-    return;
-  }
-
-  const now = new Date().toISOString();
-  const item = memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex];
-  const next = {
-    ...item,
-    status,
-    updated_at: now,
-    manual_override: true,
-  };
-  if (status === 'resolved') {
-    next.resolved_by = {
-      query_text: item?.text || '',
-      source: 'manual',
-      updated_at: now,
-    };
-  } else {
-    next.resolved_by = null;
-  }
-  memoryUnresolvedQuestions[selectedMemoryUnresolvedIndex] = next;
-  if (errEl) errEl.textContent = '';
-  _renderMemoryUnresolvedSelect();
-}
-
-function removeMemoryUnresolvedQuestion() {
-  const errEl = document.getElementById('memory-error');
-  if (selectedMemoryUnresolvedIndex < 0 || selectedMemoryUnresolvedIndex >= memoryUnresolvedQuestions.length) {
-    if (errEl) errEl.textContent = 'Select an unresolved question to remove.';
-    return;
-  }
-
-  memoryUnresolvedQuestions.splice(selectedMemoryUnresolvedIndex, 1);
-  selectedMemoryUnresolvedIndex = Math.min(selectedMemoryUnresolvedIndex, memoryUnresolvedQuestions.length - 1);
-  if (errEl) errEl.textContent = '';
-  _renderMemoryUnresolvedSelect();
-}
 
 function _renderMemoryEntitiesSelect() {
   const sel = document.getElementById('memory-entities-select');
@@ -2662,9 +2627,9 @@ async function openMemoryModal() {
     document.getElementById('memory-long').value = structured.factual_summary_long || '';
     memoryUnresolvedQuestions = _normalizeUnresolvedQuestions(structured.unresolved_questions);
     memoryEntities = _normalizeEntities(structured.entities_and_aliases);
-    selectedMemoryUnresolvedIndex = memoryUnresolvedQuestions.length ? 0 : -1;
+    selectedUnresolvedQuestionIndex = memoryUnresolvedQuestions.length ? 0 : -1;
     selectedMemoryEntityIndex = memoryEntities.length ? 0 : -1;
-    _renderMemoryUnresolvedSelect();
+    renderMemoryUnresolvedQuestions(memoryUnresolvedQuestions);
     _renderMemoryEntitiesSelect();
 
     const freeformEnabled = !!currentSessionMemory?.freeform_enabled;
@@ -2678,7 +2643,180 @@ async function openMemoryModal() {
     showToast('❌', 'Could not load session memory.', 'error');
   }
 }
+function renderMemoryUnresolvedQuestions(items = []) {
+  const container = document.getElementById('memory-unresolved-list');
+  const input = document.getElementById('memory-unresolved-input');
+  if (!container) return;
 
+  container.innerHTML = '';
+
+  if (!items.length) {
+    selectedUnresolvedQuestionIndex = -1;
+    if (input) input.value = '';
+    _renderUnresolvedMeta(null);
+    container.innerHTML = `<div class="memory-question-empty">No unresolved questions yet.</div>`;
+    return;
+  }
+
+  if (
+    selectedUnresolvedQuestionIndex < 0 ||
+    selectedUnresolvedQuestionIndex >= items.length
+  ) {
+    selectedUnresolvedQuestionIndex = 0;
+  }
+
+  items.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'memory-question-item';
+    row.dataset.index = index;
+
+    if (index === selectedUnresolvedQuestionIndex) {
+      row.classList.add('active');
+    }
+
+    const status = item.status || 'open';
+    const created = item.created_at
+      ? new Date(item.created_at).toLocaleString()
+      : '';
+    const source = item?.created_by?.query_text || '';
+
+    row.innerHTML = `
+      <div class="memory-question-main">
+        <div class="memory-question-title">${escapeHtml(item.text || '')}</div>
+        <div class="memory-question-sub">
+          ${source ? `Source: ${escapeHtml(source)}` : created ? `Created: ${escapeHtml(created)}` : 'No metadata'}
+        </div>
+      </div>
+      <span class="memory-status-badge ${status}">${escapeHtml(status)}</span>
+    `;
+
+    row.addEventListener('click', () => {
+      selectedUnresolvedQuestionIndex = index;
+      onMemoryUnresolvedSelectChange();
+      renderMemoryUnresolvedQuestions(memoryUnresolvedQuestions);
+    });
+
+    container.appendChild(row);
+  });
+
+  onMemoryUnresolvedSelectChange();
+}
+
+function onMemoryUnresolvedSelectChange() {
+  const item = memoryUnresolvedQuestions?.[selectedUnresolvedQuestionIndex];
+  const input = document.getElementById('memory-unresolved-input');
+
+  if (!item) {
+    if (input) input.value = '';
+    _renderUnresolvedMeta(null);
+    return;
+  }
+
+  if (input) input.value = item.text || '';
+  _renderUnresolvedMeta(item);
+}
+
+function upsertMemoryUnresolvedQuestion() {
+  const input = document.getElementById('memory-unresolved-input');
+  const errEl = document.getElementById('memory-error');
+  const value = (input?.value || '').trim();
+
+  if (!value) {
+    if (errEl) errEl.textContent = 'Please enter a question first.';
+    return;
+  }
+
+  const now = new Date().toISOString();
+
+  if (
+    selectedUnresolvedQuestionIndex >= 0 &&
+    selectedUnresolvedQuestionIndex < memoryUnresolvedQuestions.length
+  ) {
+    const current = memoryUnresolvedQuestions[selectedUnresolvedQuestionIndex];
+    memoryUnresolvedQuestions[selectedUnresolvedQuestionIndex] = {
+      ...current,
+      text: value,
+      updated_at: now,
+      manual_override: true,
+    };
+  } else {
+    memoryUnresolvedQuestions.push({
+      id: `manual-${Math.random().toString(36).slice(2)}`,
+      text: value,
+      status: 'open',
+      created_at: now,
+      updated_at: now,
+      created_by: {
+        query_text: value,
+        source: 'manual',
+      },
+      resolved_by: null,
+      manual_override: true,
+    });
+    selectedUnresolvedQuestionIndex = memoryUnresolvedQuestions.length - 1;
+  }
+
+  if (errEl) errEl.textContent = '';
+  renderMemoryUnresolvedQuestions(memoryUnresolvedQuestions);
+}
+
+function setMemoryUnresolvedStatus(status) {
+  const errEl = document.getElementById('memory-error');
+
+  if (!['open', 'resolved'].includes(status)) return;
+
+  if (
+    selectedUnresolvedQuestionIndex < 0 ||
+    selectedUnresolvedQuestionIndex >= memoryUnresolvedQuestions.length
+  ) {
+    if (errEl) errEl.textContent = 'Select an unresolved question first.';
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const item = memoryUnresolvedQuestions[selectedUnresolvedQuestionIndex];
+
+  memoryUnresolvedQuestions[selectedUnresolvedQuestionIndex] = {
+    ...item,
+    status,
+    updated_at: now,
+    resolved_by:
+      status === 'resolved'
+        ? {
+            query_text: item?.text || '',
+            source: 'manual',
+            updated_at: now,
+          }
+        : null,
+    manual_override: true,
+  };
+
+  if (errEl) errEl.textContent = '';
+  renderMemoryUnresolvedQuestions(memoryUnresolvedQuestions);
+}
+
+function removeMemoryUnresolvedQuestion() {
+  const errEl = document.getElementById('memory-error');
+
+  if (
+    selectedUnresolvedQuestionIndex < 0 ||
+    selectedUnresolvedQuestionIndex >= memoryUnresolvedQuestions.length
+  ) {
+    if (errEl) errEl.textContent = 'Select an unresolved question to remove.';
+    return;
+  }
+
+  memoryUnresolvedQuestions.splice(selectedUnresolvedQuestionIndex, 1);
+
+  if (memoryUnresolvedQuestions.length === 0) {
+    selectedUnresolvedQuestionIndex = -1;
+  } else if (selectedUnresolvedQuestionIndex >= memoryUnresolvedQuestions.length) {
+    selectedUnresolvedQuestionIndex = memoryUnresolvedQuestions.length - 1;
+  }
+
+  if (errEl) errEl.textContent = '';
+  renderMemoryUnresolvedQuestions(memoryUnresolvedQuestions);
+}
 async function saveSessionMemory() {
   if (!currentSession) {
     showToast('⚠️', 'No active session selected.', 'warning');

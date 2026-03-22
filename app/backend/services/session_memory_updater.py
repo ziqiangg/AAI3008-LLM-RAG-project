@@ -58,6 +58,7 @@ def _is_answer_insufficient(answer: str) -> bool:
         "not available",
         "i apologize",
         "i don't have",
+        "no information",
     ]
     return _contains_any(answer, markers)
 
