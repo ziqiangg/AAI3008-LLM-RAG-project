@@ -1,337 +1,230 @@
-# AAI3008-LLM-RAG-project
+# AAI3008 LLM RAG Project
 
-This project builds a Retrieval-Augmented Generation (RAG) learning assistant that enables students to upload academic documents (PDFs, DOCX, etc.) and receive AI-powered, context-aware answers grounded in their materials. Using Flask, Gemini 2.5 flash API, and LangChain, the system extracts text, applies semantic chunking, and stores embeddings in a PostgreSQL + pgvector database on Google Cloud SQL. Queries trigger a two-stage retrieval process—vector similarity search followed by cross-encoder reranking—to fetch the most relevant content, which Gemini 2.5 flash uses to generate accurate, cited responses. The assistant supports interactive sessions with dynamic conversation memory, multilingual translation, and optional diagram generation via Mermaid/Desmos. Hosted on Google Cloud Platform (Compute Engine, Cloud Storage, Cloud SQL), it offers a scalable, cost-efficient platform for personalized, document-grounded learning.
+A personalized RAG study assistant for asking questions over your own learning materials. The app supports user accounts, document and link ingestion, session-based conversations with memory, and cited answers generated with Gemini. Retrieval uses multilingual embeddings plus cross-encoder reranking. Tool routing for web search and diagram behavior is classifier-based (Hugging Face) with user toggles that act as hard ON switches.
 
-## Development
+## Core Features
 
-### Tech Stack
+- JWT-based user authentication with per-user sessions and data scope
+- Document ingestion from PDF, DOCX, PPTX, and TXT into PostgreSQL plus pgvector
+- Trusted web link ingestion into chunked, retrievable content
+- Folder-based document scoping for query and quiz workflows
+- Multilingual vector retrieval plus cross-encoder reranking
+- Optional web retrieval lane with trusted-domain and language-aware filtering
+- Optional diagram tool outputs (Mermaid or Desmos)
+- Session memory support with structured memory endpoints
+- Quiz generation from scoped context
 
-**Backend Framework:**
-- Flask 3.0.3 - Web framework
-- Flask-CORS 4.0.0 - Cross-Origin Resource Sharing
+## Architecture At A Glance
 
-**AI/ML Stack:**
-- Google Gemini 2.5 Flash API - Large Language Model
-- LangChain 0.2.12 - LLM framework for RAG orchestration
-- Sentence Transformers 3.0.1 - Embedding generation (All-MiniLM-L6-v2)
-- Cross-Encoder 0.4.0 - Reranking (ms-marco model)
-- PyTorch 2.3.1 - Deep learning backend
+- Flask API serves backend endpoints and the frontend static app
+- Frontend sends query payloads with user toggles and scope filters
+- PostgreSQL plus pgvector stores chunks, embeddings, sessions, and memory state
+- Gemini generates answers from retrieved context
+- Hugging Face intent classifier controls model-based tool routing for `web_search` and `diagram_enabled`
 
-**Database:**
-- PostgreSQL 18 - Relational database
-- pgvector 0.3.4 - Vector similarity search extension
-- SQLAlchemy 2.0.30 - ORM
+## Tech Stack
 
-**Document Processing:**
-- Unstructured 0.15.7 - Multi-format document parsing (PDF, DOCX, PPTX, TXT)
-- pdf2image 1.17.0 - PDF rendering
-- Pillow 10.3.0 - Image processing
+### Backend Framework
 
-**Utilities:**
-- python-dotenv 1.0.1 - Environment variable management
-- google-cloud-storage 2.14.0 - Google Cloud SDK (for Cloud Storage integration)
+- Flask 3.0.3
+- Flask-CORS 4.0.0
+- Flask-JWT-Extended 4.7.1
+- SQLAlchemy 2.0.30
 
-### Project Structure
+### AI and NLP Stack
 
-```
-AAI3008-LLM-RAG-project/
-├── app/
-│   ├── backend/
-│   │   ├── routes/          # API endpoints
-│   │   ├── services/        # Business logic
-│   │   ├── utils/           # Helper functions
-│   │   ├── models.py        # Database models
-│   │   ├── config.py        # Configuration settings
-│   │   ├── database.py      # Database connection
-│   │   └── app.py           # Flask application factory
-│   └── frontend/            # Frontend files (to be implemented)
-├── schema_dump/             # Database schema SQL
-├── docker-compose.yml       # Docker orchestration
-├── Dockerfile               # Docker image definition
-├── requirements.txt         # Python dependencies
-└── .env.example             # Environment variables template
-```
+- Google Generative AI SDK 0.8.3 (Gemini 2.5 Flash API)
+- langchain 0.2.13
+- langchain-community 0.2.12
+- langchain-core 0.2.30
+- langchain-huggingface 0.0.3
+- sentence-transformers 3.0.1
+- transformers 4.41.2
+- torch 2.3.1
 
-## Setup Options
+### Database
 
-You can set up this project using either **Docker** (recommended) or a **traditional Python virtual environment**.
+- PostgreSQL with pgvector container image: ankane/pgvector:latest (Docker)
+- pgvector Python package 0.3.4
+- psycopg2-binary 2.9.9
 
----
+### Document Processing
 
-## Option 1: Docker Setup (Recommended)
+- unstructured 0.15.7
+- PyMuPDF 1.24.5
+- pdfplumber 0.7.0
+- python-pptx (unpinned)
+- docx2txt 0.8
+- pdf2image 1.17.0
+- Pillow 10.3.0
 
-Docker simplifies the setup by automatically handling PostgreSQL, pgvector, and all dependencies.
+### Utilities
 
-### Prerequisites
+- python-dotenv 1.0.1
+- google-cloud-storage 2.14.0
+- langdetect 1.0.9
+- deep-translator 1.11.4
 
-- **Docker** and **Docker Compose** installed ([Install Docker](https://docs.docker.com/get-docker/))
-- **Git**
-- **Google Gemini API Key** (obtain from [Google AI Studio](https://aistudio.google.com/))
+## Models Used
 
-### Setup Instructions
+- Embedding model: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+  - Used for multilingual semantic embeddings in retrieval.
+- Cross-encoder reranking model: cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
+  - Used to rerank retrieved chunks by relevance before generation.
+- Tool routing classifier: aitraineracc/intent-classification-multilabel
+  - A fine-tuned DistilBERT multi-label classifier developed specifically for this project use case, used to infer web_search and diagram_enabled intents.
 
-#### 1. Clone the Repository
+## Quick Start (Docker First)
 
-```bash
-git clone https://github.com/ziqiangg/AAI3008-LLM-RAG-project.git
-cd AAI3008-LLM-RAG-project
-```
+Use Docker setup as the primary way to run this project.
+For extra Docker workflows, see [DOCKER_COMMANDS.md](DOCKER_COMMANDS.md).
+If you need manual PostgreSQL plus pgvector installation (non-Docker), see [postgre_vector_db_installation_guide.md](postgre_vector_db_installation_guide.md).
 
-#### 2. Configure Environment Variables
+### 1) Create .env
 
-Create a `.env` file in the project root (use `.env.example` as template):
-
-```bash
-# Copy the example file
-cp .env.example .env
-```
-
-Edit `.env` and add your API keys:
+Create a `.env` file in the repository root with the minimum required values (use .env.example as template):
 
 ```env
-# Gemini API (REQUIRED)
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Database Configuration (defaults are fine for Docker)
+GEMINI_API_KEY=your_key_here
 DB_NAME=llm_rag_db
 DB_USER=postgres
-DB_PASSWORD=your_secure_password_here
-
-# Flask Configuration
+DB_PASSWORD=postgres
 FLASK_ENV=development
-SECRET_KEY=your_secret_key_here
+SECRET_KEY=change_me
+SERPER_API_KEY=optional_for_web_search
+DESMOS_API_KEY=optional_for_desmos_client
 ```
 
-#### 3. Start the Application
+### 2) Build and start
 
 ```bash
 docker-compose up --build
 ```
 
-This command will:
-- Build the Flask application Docker image
-- Pull the PostgreSQL with pgvector image
-- Start both containers
-- Automatically initialize the database schema
-- Start the Flask development server
-
-#### 4. Access the Application
-
-- **API**: [http://localhost:5000](http://localhost:5000)
-- **Health Check**: [http://localhost:5000/health](http://localhost:5000/health)
-
-#### 5. Stop the Application
+Optional detached mode:
 
 ```bash
-# Stop containers (keeps data)
-docker-compose down
+docker-compose up -d
+```
 
-# Stop containers and remove volumes (deletes database data)
+### 3) Verify
+
+- API base: http://localhost:5000
+- Health: http://localhost:5000/api/health
+
+### 4) Stop
+
+```bash
+docker-compose down
+```
+
+Remove DB volume too:
+
+```bash
 docker-compose down -v
 ```
 
-### Useful Docker Commands
+## How To Use The Application
 
-```bash
-# View running containers
-docker-compose ps
+1. Open http://localhost:5000 in your browser.
+2. Register an account or log in.
+3. Upload one or more documents from the sidebar.
+4. Optionally create folders and scope your documents by folder.
+5. Ask questions in chat.
+6. Optionally enable web search or diagram mode using the UI toggles.
+7. Review cited sources and generated tool output (for example Mermaid/Desmos) in the response.
+8. Reopen sessions and memory from the session and user menu areas.
 
-# View logs
-docker-compose logs -f
+## Guest vs Logged-In Features
 
-# View backend logs only
-docker-compose logs -f backend
+### Guest User
 
-# View database logs only
-docker-compose logs -f db
+- Can open the application UI.
+- Can ask direct queries without creating an account (sessionless use).
+- Does not get user-owned ingestion, persistent sessions, or memory management.
 
-# Restart services
-docker-compose restart
+### Logged-In User
 
-# Rebuild and restart
-docker-compose up --build
+- Can upload and ingest documents.
+- Can ingest web links into their own document space.
+- Can create and manage folders, sessions, and session memory.
+- Can use quiz generation and other user-scoped features.
 
-# Execute commands in backend container
-docker-compose exec backend bash
+## API Overview (High Level)
 
-# Execute commands in database container
-docker-compose exec db psql -U postgres -d llm_rag_db
+### System
 
-# Stop all services
-docker-compose down
+- GET /api/health
+- GET /api/config/client
 
-# Stop all services and remove volumes (delete data)
-docker-compose down -v
-```
+### Auth and Users
 
-### Database Management with Docker
+- POST /api/users/register
+- POST /api/users/login
+- GET /api/users/me
+- PATCH /api/users/me
+- DELETE /api/users/me
 
-```bash
-# Access PostgreSQL shell
-docker-compose exec db psql -U postgres -d llm_rag_db
+### Documents and Folders
 
-# Run SQL commands
-docker-compose exec db psql -U postgres -d llm_rag_db -c "SELECT * FROM users;"
+- GET /api/documents/
+- POST /api/documents/upload
+- GET /api/documents/{doc_id}
+- PATCH /api/documents/{doc_id}
+- DELETE /api/documents/{doc_id}
+- GET /api/folders/
+- POST /api/folders/
+- PATCH /api/folders/{folder_id}
+- DELETE /api/folders/{folder_id}
 
-# Backup database
-docker-compose exec db pg_dump -U postgres llm_rag_db > backup.sql
+### Sessions and Memory
 
-# Restore database
-docker-compose exec -T db psql -U postgres llm_rag_db < backup.sql
-```
+- POST /api/sessions/
+- GET /api/sessions/
+- GET /api/sessions/{session_id}
+- PATCH /api/sessions/{session_id}
+- DELETE /api/sessions/{session_id}
+- POST /api/sessions/{session_id}/messages
+- GET /api/sessions/{session_id}/messages
+- GET /api/sessions/{session_id}/memory
+- PATCH /api/sessions/{session_id}/memory
 
----
+### Query, Quiz, and Links
 
-## Option 2: Traditional Setup (Without Docker)
+- POST /api/query
+- POST /api/quiz/generate
+- POST /api/links/ingest
 
-Use this option if you prefer managing dependencies manually or cannot use Docker.
+## Key Configuration
 
-### Prerequisites
+- `GEMINI_API_KEY`: required for answer generation. Get it from Google AI Studio.
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`: database connection
+- `SECRET_KEY` and `JWT_SECRET_KEY`: auth and token security
+- `SERPER_API_KEY`: enables web search retrieval lane. Get it from serper.dev.
+- `DESMOS_API_KEY`: client config endpoint for graph tooling. Get it from the Desmos API signup/docs page.
 
-- **Python 3.14.x** (required)
-- **PostgreSQL 18 + pgvector** (for installation guide, see [postgre_vector_db_installation_guide.md](postgre_vector_db_installation_guide.md))
-- **Git**
-- **Visual Studio C++ Build Tools** (for pgvector compilation on Windows)
-- **Google Gemini API Key** (obtain from [Google AI Studio](https://aistudio.google.com/))
+## Known Behavior
 
-### Setup Instructions
+- Tool routing is classifier-based and returns routing metadata in query responses.
+- User toggles are hard ON signals for web and diagram behavior.
+- If classifier inference fails, routing falls back to toggles-only behavior.
 
-#### 1. Clone the Repository
+## Troubleshooting
 
-```bash
-git clone https://github.com/ziqiangg/AAI3008-LLM-RAG-project.git
-cd AAI3008-LLM-RAG-project
-```
+- Hugging Face model download or tokenizer errors:
+  - Check container internet access and model name in `INTENT_MODEL_NAME`.
+  - Restart backend after model or tokenizer config changes.
+- Database initialization issues:
+  - Ensure `db` service is healthy before backend starts.
+  - Recreate containers with `docker-compose down -v` then `docker-compose up --build`.
+- Missing API keys:
+  - Missing `GEMINI_API_KEY` will prevent response generation.
+  - Missing `SERPER_API_KEY` disables web retrieval results.
 
-#### 2. Create a Virtual Environment
+## Project Structure
 
-**Windows:**
-```powershell
-python -m venv venv
-venv\Scripts\activate
-```
-
-**macOS/Linux:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-#### 3. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-#### 4. Set Up PostgreSQL Database
-
-1. Install PostgreSQL 18 and pgvector extension following [postgre_vector_db_installation_guide.md](postgre_vector_db_installation_guide.md)
-
-2. Create a new database for the project:
-   ```sql
-   CREATE DATABASE llm_rag_db;
-   ```
-
-3. Connect to the database and initialize the schema using the provided SQL dump:
-   ```sql
-   \c llm_rag_db
-   \i schema_dump/schema.sql
-   ```
-   
-   Alternatively, you can run the schema directly in pgAdmin 4's Query Tool by opening [schema_dump/schema.sql](schema_dump/schema.sql) and executing it.
-
-#### 5. Configure Environment Variables
-
-Create a `.env` file in the project root with the following variables:
-
-```env
-# Gemini API
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=llm_rag_db
-DB_USER=postgres
-DB_PASSWORD=your_postgres_password
-
-# Flask Configuration
-FLASK_APP=app.backend.app:app
-FLASK_ENV=development
-SECRET_KEY=your_secret_key_here
-
-# Optional: AWS Configuration (for S3 file storage)
-# AWS_ACCESS_KEY_ID=your_aws_access_key
-# AWS_SECRET_ACCESS_KEY=your_aws_secret_key
-# AWS_REGION=us-east-1
-# S3_BUCKET_NAME=your_bucket_name
-```
-
-#### 6. Run the Application
-
-```bash
-flask run
-```
-
-The application should now be running at `http://localhost:5000`
-
----
-
-## API Endpoints
-
-The Flask backend provides the following REST API endpoints:
-
-- `GET /health` - Health check and database connection status
-- `GET /api/users` - Get all users
-- `POST /api/users` - Create a new user
-- `GET /api/users/<id>` - Get user by ID
-- `DELETE /api/users/<id>` - Delete user
-- `GET /api/documents` - Get all documents
-- `POST /api/documents` - Upload a new document
-- `GET /api/documents/<id>` - Get document by ID
-- `DELETE /api/documents/<id>` - Delete document
-- `GET /api/sessions` - Get all sessions
-- `POST /api/sessions` - Create a new session
-- `GET /api/sessions/<id>` - Get session by ID
-- `PUT /api/sessions/<id>` - Update session
-- `DELETE /api/sessions/<id>` - Delete session
-- `POST /api/query` - Ask a question (RAG pipeline - to be implemented)
-
-### Database Schema Reference
-
-The database schema includes the following tables:
-- **users** - User account information
-- **documents** - Uploaded document metadata
-- **sessions** - User session management with conversation history
-- **document_chunks** - Text chunks with vector embeddings (384-dimensional)
-
-For detailed schema structure, see [schema_dump/schema.sql](schema_dump/schema.sql)
-
-## Production (Cloud Deployment)
-
-### Cloud Infrastructure Stack
-
-**Compute:**
-- Google Compute Engine - Application hosting
-
-**Storage:**
-- Google Cloud Storage - Document file storage
-
-**Database:**
-- Google Cloud SQL (PostgreSQL 18 + pgvector) - Managed database service
-
-**Networking:**
-- VPC Network - Virtual Private Cloud
-- Firewall Rules - Network security
-- Static External IP - Reserved IP address (optional)
-
-### Prerequisites
-
-- Google Cloud Platform account with appropriate IAM roles
-- gcloud CLI installed and configured
-- Domain name (optional, for custom DNS)
-- SSL/TLS certificate (recommended for HTTPS) #NOT CONFIRMED IF WE ARE DOING THIS
-
-### Deployment Instructions
-
-(To be added) 
+- `app/backend`: Flask routes, services, models, config
+- `app/frontend`: browser UI
+- `schema_dump`: database schema
+- `uploads`: uploaded content
+- `docker-compose.yml`, `Dockerfile`: local container setup
