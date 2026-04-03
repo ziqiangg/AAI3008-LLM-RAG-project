@@ -1,0 +1,440 @@
+{
+  "model": "gemini-2.5-flash",
+  "embedding_model": "gemini-embedding-001",
+  "run_tag": "topk3",
+  "count": 30,
+  "settings": {
+    "api_base": "http://localhost:5000",
+    "rerank_top_k": 3,
+    "use_db_context": true,
+    "eval_data": "test/eval_candidate_qa_with_chunks.json"
+  },
+  "scores": {
+    "faithfulness": 0.46814273468807494,
+    "answer_relevancy": 0.6281365392471195,
+    "context_precision": 0.3555555555216666,
+    "context_recall": 0.2988888888888888
+  },
+  "per_sample": [
+    {
+      "user_input": "What does SCoRE stand for, and what is its primary purpose?",
+      "retrieved_contexts": [
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c...",
+        "7 Conclusion In this paper, we introduce SCoRE, a bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios through multi-hop inference chains generated through a knowledge-driven synthetic data strategy. The dataset contains 100,000 questions across three difficulty ...",
+        "SCoRE contains 100k bilingual (Chi- nese–English) multiple-choice questions whose reasoning chains span 2–11 hops and are grouped into various difficulty levels. Each question is accompanied by fine-grained knowledge labels, explicit reasoning chains, and difficulty lev- els for diagnostic evaluatio..."
+      ],
+      "response": "Based on the provided context, the full meaning of the acronym SCoRE is not explicitly stated [S1, S2, S3].\n\nHowever, its primary purpose is clearly defined:\n*   **Primary Purpose:** SCoRE is a diagnostic benchmark and bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios [S1, S2]. It specifically aims to assess and diagnose the long-chain commonsense reasoning abilities of Large Language Models (LLMs) [S3]. The dataset uses multi-hop inference chains and is generated through a knowledge-driven synthetic data strategy [S1, S2].",
+      "reference": "SCoRE stands for Scenario-based Commonsense Reasoning Evaluation. It is a benchmark designed to evaluate long-chain commonsense reasoning abilities of LLMs using multi-hop questions synthesized from scenario schemas.",
+      "faithfulness": 0.75,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What are the four commonsense domains covered by SCoRE?",
+      "retrieved_contexts": [
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c...",
+        "Considering the testing cost, we intentionally selected 6,000 questions that can cover all knowledge points in our knowledge base to form the SCoRE test dataset. Knowledge Density SCoRE test set consists of 6,000 questions bilingual in Chinese and English spanning four major commonsense domains: spa...",
+        "7 Conclusion In this paper, we introduce SCoRE, a bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios through multi-hop inference chains generated through a knowledge-driven synthetic data strategy. The dataset contains 100,000 questions across three difficulty ..."
+      ],
+      "response": "The SCoRE benchmark covers four commonsense domains:\n*   Space\n*   Time\n*   Social\n*   Nature\n\nThese domains are closely related to everyday human life and are used to evaluate complex logical reasoning in commonsense scenarios [S1, S2]. The dataset also includes a \"mix domain\" for questions that span multiple of these labels [S1, S2].",
+      "reference": "Space, Time, Social, and Nature plus a Mix domain for questions with multiple domain labels.",
+      "faithfulness": 0.2222222222222222,
+      "answer_relevancy": 0.8555989128622685,
+      "context_precision": 0.49999999995,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What reasoning chain lengths does SCoRE support, and how is difficulty distributed across levels?",
+      "retrieved_contexts": [
+        "SCoRE contains 100k bilingual (Chi- nese–English) multiple-choice questions whose reasoning chains span 2–11 hops and are grouped into various difficulty levels. Each question is accompanied by fine-grained knowledge labels, explicit reasoning chains, and difficulty lev- els for diagnostic evaluatio...",
+        "the reasoning process: domains, scenarios, entities, properties and relations used in the reasoning process, along with the reasoning chain length and question type. Questions that models get wrong can be analyzed and traced back to specific knowledge points or reasoning steps. Detailed cases are sh...",
+        "The distribution ratio of difficulty levels is 1:2:3. We believe that current LLMs are in the phase of transitioning from easy to complex reasoning tasks. Therefore, SCoRE focuses on more medium and hard questions, in order to accelerate the improvement of the model’s reasoning capabilities. 4 Exper..."
+      ],
+      "response": "SCoRE supports reasoning chains that span 2 to 11 hops [S1].\n\nRegarding difficulty, SCoRE categorizes questions into three levels: easy, medium, and hard [S2]. The distribution ratio across these difficulty levels is 1:2:3 [S3]. This distribution reflects a focus on medium and hard questions to help improve the reasoning capabilities of current Large Language Models (LLMs) [S3].",
+      "reference": "Reasoning chains span 2 to 11 hops. Difficulty levels are distributed in a 1:2:3 ratio (easy:medium:hard), with more focus on medium and hard questions.",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.8734415984318443,
+      "context_precision": 0.3333333333,
+      "context_recall": 1.0
+    },
+    {
+      "user_input": "What was the highest accuracy achieved by any model on the full SCoRE benchmark, and what was the accuracy on the hard set?",
+      "retrieved_contexts": [
+        "3. We conducted evaluations using 13 state-of-the-art reasoning LLMs. The highest-performing model achieved a score of 69. 78%, and the average accuracy on the hard set was only 47. 91%, indicating that SCoRE is challenging for the top-performing models. 4. Through case analysis, we identified sever...",
+        "Similarly, the level of precision in describing spatial relations, such as the difference between vague and precise type of the six-slot scenario in space domain also affects the models to understand and respond correctly. Downward Accuracy Across Difficulty Levels Figure 4 presents the average accu...",
+        "Humanity's Last Exam - Wikipedia Jump to content Main menu Main menu move to sidebar hide Navigation Main page Contents Current events Random article About Wikipedia Contact us Contribute Help Learn to edit Community portal Recent changes Upload file Special pages Search Search Appearance Donate Cre..."
+      ],
+      "response": "On the SCoRE benchmark, the highest accuracy achieved by any model was 69.78% [IndividualProject_RefPaper.pdf]. For the hard set of the SCoRE benchmark, the average accuracy was 47.91% [IndividualProject_RefPaper.pdf, IndividualProject_RefPaper.pdf].\n\nThis indicates that SCoRE is a challenging benchmark, particularly as the difficulty of the tasks increases [IndividualProject_RefPaper.pdf].\n\n***\n\nThe diagram below illustrates the downward trend in accuracy across different difficulty levels (easy, medium, hard) for various domains within a benchmark. It visually represents how model performance generally decreases as task complexity rises, with specific domains like \"nature\" and \"time\" showing higher accuracy at easier levels.",
+      "reference": "The best model achieved only 69.78% overall accuracy; accuracy on the hard set was only 47.91%.",
+      "faithfulness": 0.6,
+      "answer_relevancy": 0.8473105913192257,
+      "context_precision": 0.9999999999,
+      "context_recall": 1.0
+    },
+    {
+      "user_input": "How does SCoRE compare to CommonsenseQA, TRAM, and MuSR in terms of key dataset properties?",
+      "retrieved_contexts": [
+        "A: Turkey Table 2: Comparison of commonsense reasoning datasets Datasets Strategy Question Diversity Accuracy Assurance Automated Generation Long-chain Reasoning Fine-grained Features CommonSenseQA [2] human annotation √ √ × × × TRAM [8] template rules × √ √ × × MuSR [12] LLM generation √ × √ √ × SC...",
+        "7 Conclusion In this paper, we introduce SCoRE, a bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios through multi-hop inference chains generated through a knowledge-driven synthetic data strategy. The dataset contains 100,000 questions across three difficulty ...",
+        "SCoRE: Benchmarking Long-Chain Reasoning in Commonsense Scenarios 1 Introduction 2 Data Synthesis for SCoRE 2.1 Scenario-Centered Knowledge Base Construction 2.2 Knowledge-Driven Question generation Step 1: Scenario Definition Step 2: Inference Data Generation Step 3: Question Design 3 Data Statisti..."
+      ],
+      "response": "SCoRE compares to CommonsenseQA, TRAM, and MuSR across several key dataset properties, primarily in its strategy for data generation and its ability to support complex reasoning and detailed analysis.\n\nHere's a breakdown of the comparison [S1, S3]:\n\n### SCoRE\nSCoRE (Scenario-based Commonsense Reasoning Evaluation) is a bilingual benchmark designed to evaluate complex logical reasoning in commonsense scenarios through multi-step inference chains [S1, S3].\n\n*   **Strategy:** Knowledge-driven data synthesis. This involves combining a manually constructed, small-scale knowledge base with automatic question generation, ensuring both data quality and quantity with minimal labor [S1, S3].\n*   **Question Diversity:** Yes (√) [S1, S3].\n*   **Accuracy Assurance:** Yes (√). The knowledge-driven synthesis method, with its transparent and traceable workflow, ensures data quality and accuracy [S1, S3].\n*   **Automated Generation:** Yes (√). The method allows for automated generation of large-scale, high-accuracy reasoning data [S1, S2, S3].\n*   **Long-chain Reasoning:** Yes (√). SCoRE is specifically designed for multi-step inference chains, with reasoning chains spanning 2–11 hops [S1, S3].\n*   **Fine-grained Features:** Yes (√). Each question comes with explicit reasoning chains, fine-grained knowledge labels, and difficulty levels, which facilitates diagnostic evaluation of LLMs [S3].\n\n### Comparison with Other Datasets\n\n| Property                | CommonSenseQA [2]  | TRAM [8]           | MuSR [12]          | SCoRE (ours)       |\n| :---------------------- | :----------------- | :----------------- | :----------------- | :----------------- |\n| **Strategy**            | Human annotation   | Template rules     | LLM generation     | Knowledge-driven   |\n| **Question Diversity**  | √                  | ×                  | √                  | √                  |\n| **Accuracy Assurance**  | √                  | √                  | ×                  | √                  |\n| **Automated Generation**| ×                  | √                  | √                  | √                  |\n| **Long-chain Reasoning**| ×                  | ×                  | √                  | √                  |\n| **Fine-grained Features**| ×                  | ×                  | ×                  | √                  |\n[S1, S3]\n\n**1. CommonSenseQA [2]**\n*   **Strategy:** Relies on human annotation [S1, S3].\n*   **Limitations:** While it offers question diversity and accuracy assurance, it lacks automated generation, long-chain reasoning, and fine-grained features. Questions are often solvable through direct knowledge retrieval or single-step reasoning, which can be too simple for advanced reasoning models, and manual annotation is costly for large-scale datasets [S1, S3].\n\n**2. TRAM [8]**\n*   **Strategy:** Based on template rules [S1, S3].\n*   **Limitations:** It allows for automated generation and assures accuracy, but suffers from limited question diversity, short reasoning chains, and lacks fine-grained features. Its reasoning patterns are strictly confined to predefined templates [S1, S3].\n\n**3. MuSR [12]**\n*   **Strategy:** Uses LLM generation [S1, S3].\n*   **Limitations:** While it supports question diversity, automated generation, and long-chain reasoning, its data quality is not well guaranteed, and it lacks fine-grained features, hindering detailed analysis of model performance [S1, S3].\n\nIn summary, SCoRE aims to overcome the limitations of previous benchmarks by offering a scalable, extensible framework with guaranteed data quality, diverse multi-step reasoning questions, and fine-grained features for robust diagnostic evaluation of LLMs [S3].",
+      "reference": "Only SCoRE achieves all five properties: question diversity, accuracy assurance, automated generation, long-chain reasoning, and fine-grained features. CommonsenseQA lacks automated generation and long-chain reasoning; TRAM lacks diversity and fine-grained features; MuSR lacks accuracy assurance and fine-grained features.",
+      "faithfulness": 0.6779661016949152,
+      "answer_relevancy": 0.8828677554287738,
+      "context_precision": 0.9999999999,
+      "context_recall": 0.75
+    },
+    {
+      "user_input": "What are the three steps of the Inference Engine used to automatically generate SCoRE questions?",
+      "retrieved_contexts": [
+        "2 Data Synthesis for SCoRE The basic methodology for generating our reasoning data revolves constructing knowledge base and ultilizing Inference Engine to generate questions. The core knowledge base is relatively small in scale, and to ensure accuracy, it primarily leverages existing knowledge bases...",
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c...",
+        "7 Conclusion In this paper, we introduce SCoRE, a bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios through multi-hop inference chains generated through a knowledge-driven synthetic data strategy. The dataset contains 100,000 questions across three difficulty ..."
+      ],
+      "response": "The provided context describes the overall methodology for generating SCoRE questions but does not explicitly detail the \"three steps\" of the Inference Engine itself.\n\nBased on the available information, the process involves:\n1.  **Constructing a Knowledge Base:** A relatively small, accurate knowledge base is created, leveraging existing knowledge bases combined with manual construction [S1]. This reliable knowledge base integrates diverse commonsense knowledge and scenarios to ensure data quality [S2].\n2.  **Utilizing an Inference Engine:** An automatic inference engine is designed to control the entire inference process and generate questions and answers [S2]. This reasoning engine is developed under strict logical rules, which, given the accuracy of the knowledge base, guarantees the precision of the automatically synthesized data [S1].\n\nThe overall data synthesis approach uses this knowledge-driven strategy to generate large-scale, high-accuracy reasoning data with question-answer pairs [S3]. While the sources explain *what* the inference engine does (generates questions based on logical rules and a knowledge base), they do not break down its internal operation into specific numbered steps.\n\n### Diagram Description\n\nThe automatically generated diagram would illustrate the knowledge-driven synthetic data generation strategy used for SCoRE.\n\n**Key Components and Relationships:**\n\n*   **Knowledge Base:** This would be a central component, representing the manually constructed and integrated repository of diverse commonsense knowledge and scenarios.\n*   **Inference Engine:** This component would be shown interacting with the Knowledge Base. It represents the automatic system designed with strict logical rules.\n*   **Question and Answer Generation:** An output arrow from the Inference Engine would lead to \"SCoRE Questions and Answers,\" indicating the final product of the process.\n\nThe diagram would visually represent how the Inference Engine leverages the Knowledge Base and its logical rules to automatically synthesize diagnostic questions and corresponding answers for the SCoRE benchmark.",
+      "reference": "(1) Scenario Definition: selecting entities and filling them into a scenario with natural language descriptions; (2) Inference Data Generation: a rule-based Reasoner builds a fact base and selects a minimal statement set; (3) Question Design: a Question Generator creates multiple-choice questions (Precise, Vague, Correct/Incorrect Statement types).",
+      "faithfulness": 0.42857142857142855,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "How large is the SCoRE knowledge base in terms of scenarios, entities, and rules?",
+      "retrieved_contexts": [
+        "Considering the testing cost, we intentionally selected 6,000 questions that can cover all knowledge points in our knowledge base to form the SCoRE test dataset. Knowledge Density SCoRE test set consists of 6,000 questions bilingual in Chinese and English spanning four major commonsense domains: spa...",
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c...",
+        "Though the knowledge base is relatively small in scale, it has the potential to generate a large number of questions. Taking the \"three-tiers two-columns\" scenario as an example, 633 entities in the knowledge base meet the constraints of this scenario. Just selecting 6 entities to fill into this sce..."
+      ],
+      "response": "The SCoRE knowledge base is characterized by the following scale in terms of its components:\n\n*   **Scenarios:** It contains 11 distinct scenarios [S1].\n*   **Entities:** The knowledge base includes 707 entities [S1].\n*   **Properties and Relations:** It comprises 29 properties and 109 relations [S1]. While the term \"rules\" isn't explicitly used, properties and relations define the structure and connections within the knowledge base, which are essential for generating questions and answers [S2, S1].\n\nThis knowledge base, though relatively small in scale, is capable of generating a vast number of questions. For instance, a single scenario like \"three-tiers two-columns\" can yield A6 633 = 6 \\* 10^16 possible combinations by selecting just 6 entities from the 633 entities that meet its constraints [S3].\n\n***\n\nThe diagram below visually represents the SCoRE knowledge base's structure and its key quantitative components. It will show \"SCoRE Knowledge Base\" at the center, branching out to display the total number of Scenarios, Entities, Properties, and Relations, each with their respective counts derived from the provided context.",
+      "reference": "The knowledge base contains 11 scenarios, 707 entities, and 939 rules associated with 29 properties and 109 relations.",
+      "faithfulness": 0.22580645161290322,
+      "answer_relevancy": 0.8212699790850153,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What was observed about token count and answer correctness in reasoning models like DeepSeek-R1 on SCoRE?",
+      "retrieved_contexts": [
+        "We conducted experiments using both deepseek-reasoner and deepseek-chat models across datasets of varying difficulty levels, collecting response metadata including token length and answer correctness. For each dataset and model combination, we generated scatter plots illustrating token length versus...",
+        "SCoRE contains 100k bilingual (Chi- nese–English) multiple-choice questions whose reasoning chains span 2–11 hops and are grouped into various difficulty levels. Each question is accompanied by fine-grained knowledge labels, explicit reasoning chains, and difficulty lev- els for diagnostic evaluatio...",
+        "%PDF-1.3 %��������� 3 0 obj << /Filter /FlateDecode /Length 10011 >> stream x\u0001��k��Fr����h�Ù�p\u001a\u0004�\u0017tsy�R��C-��L�=�ǟ\u0014v�8��\b[�?� ��f��?׷�<_���?�\b\u0017�kw_\u0013��x���v�/\u0006\u0007\u0019���ӯsD�ק!�[�>y�|ݮo��C��g���~�<_o׷~�ֻ����Z=<����5~a��;\u0000�}��ÅK�o�U���\u0004� Vzw0��\u0019gw�ǜwS�\u0011s�� ��\u000e��n����X�e�_S�=���a���n�����Wǝ?���?v���sj ��..."
+      ],
+      "response": "Based on the provided context, the following observations were made about token count in reasoning models:\n\nFor reasoning-optimized models like `deepseek-reasoner` (similar in type to DeepSeek R1), experiments showed that within the same dataset, **higher difficulty levels correspond to increased token counts in the model outputs** [IndividualProject_RefPaper.pdf]. This suggests that these models generate extended reasoning chains when faced with more complex questions [IndividualProject_RefPaper.pdf].\n\nHowever, the provided context **does not explicitly detail an observation about the direct relationship between token count and *answer correctness*** for DeepSeek-R1 or deepseek-reasoner on the SCoRE dataset. While response metadata including token length and answer correctness was collected [IndividualProject_RefPaper.pdf], the specific findings presented focus on the correlation between token count and question difficulty, not directly on token count and correctness.\n\nRegarding DeepSeek R1's performance on SCoRE, it achieved an accuracy of 69.78% overall, dropping to 47.91% on the hard set. Errors often stemmed from rare knowledge, logical inconsistency, and over-interpretation of simple questions [IndividualProject_RefPaper.pdf]. However, this information does not link its accuracy to token count.",
+      "reference": "In reasoning models, harder questions require more output tokens. Notably, correct responses had shorter average token lengths than incorrect ones at the same difficulty level.",
+      "faithfulness": 0.4,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "How many undergraduate participants were recruited for human evaluation in SCoRE, and how were they assigned across domains?",
+      "retrieved_contexts": [
+        "H Human Evaluation We recruited a total of 50 undergraduate students from Peking University to participate in the human evaluation, with 10 participants randomly assigned to each commonsense domain. Each domain consisted of 60 test questions. Except for the social relationship domain, which included...",
+        "For human evaluation, we recruited 10 undergraduate participants for each domain and randomly sampled 5% of the dataset as test questions, spanning all difficulty levels, scenarios and question types. Each participant was required to complete 60 questions, including 30 in Chinese and 30 in English, ...",
+        "The instruction presented to the participants was similar to the prompts given to LLMs, as presented in figure 5. The entire human evaluation cost approximately $10k. After human evaluation, we calculated the accuracy of each participant in the 60 questions. For each domain, we computed the average ..."
+      ],
+      "response": "The human evaluation for SCoRE recruited a total of 50 undergraduate students from Peking University [IndividualProject_RefPaper.pdf].\n\nThese participants were assigned across domains as follows:\n*   10 participants were randomly assigned to each commonsense domain [IndividualProject_RefPaper.pdf].\n\n***\n\n### Diagram Description\n\nThe diagram illustrates the recruitment and assignment process for the human evaluation in SCoRE.\n\n**Key Components and Relationships:**\n*   **Total Participants:** A central node or box represents the \"50 Undergraduate Students Recruited.\"\n*   **Assignment Process:** Arrows or lines branch out from the total participants, indicating their distribution.\n*   **Commonsense Domains:** Multiple nodes or boxes represent the different \"Commonsense Domains\" (e.g., Domain A, Domain B, etc.).\n*   **Assignment Quantity:** Each arrow leading to a domain will specify \"10 Participants Randomly Assigned,\" showing how the total pool was distributed evenly and randomly among the domains.\n\nThis visual representation clarifies the total number of participants and how they were distributed for the evaluation.",
+      "reference": "50 undergraduate students from Peking University were recruited, with 10 participants randomly assigned to each of the 5 commonsense domains. Each participant completed 60 questions within 8 days across 4 online questionnaires.",
+      "faithfulness": 0.23076923076923078,
+      "answer_relevancy": 0.900595858870442,
+      "context_precision": 0.49999999995,
+      "context_recall": 0.5
+    },
+    {
+      "user_input": "In which domains did the best-performing LLM exceed mean human accuracy on SCoRE, and why?",
+      "retrieved_contexts": [
+        "In contrast, DeepSeek-R1, the top-performing open-source model, under- performs relative to the closed-source models. Overall, our benchmark remains a challenging test, effectively highlighting the limitations of current models across various domains. Notably, LLMs specifically trained for inference...",
+        "3. We conducted evaluations using 13 state-of-the-art reasoning LLMs. The highest-performing model achieved a score of 69. 78%, and the average accuracy on the hard set was only 47. 91%, indicating that SCoRE is challenging for the top-performing models. 4. Through case analysis, we identified sever...",
+        "Just a moment..."
+      ],
+      "response": "The best-performing Large Language Model (LLM) exceeded mean human accuracy on the SCoRE benchmark in the **time and social domains** [S1].\n\nThis outperformance is attributed to two main factors:\n1.  **Ambiguity of temporal expressions:** Natural language often contains temporal expressions that can be interpreted differently by humans, leading to varied reasoning outcomes [S1].\n2.  **Complexity of kinship networks:** The questions in the hard level of the social domain involved complex kinship networks, which can exceed the cognitive load most humans can manage [S1].\n\nOverall, while the SCoRE benchmark is challenging for top-performing models, highlighting limitations in commonsense reasoning [S2], there are specific areas where LLMs show an advantage over human participants [S1].",
+      "reference": "In the time and social domains. For time, ambiguous temporal expressions led to divergent human interpretations. For social hard level, the complexity of family kinship networks exceeded most humans cognitive load.",
+      "faithfulness": 0.07692307692307693,
+      "answer_relevancy": 0.8817844208222,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What external knowledge resources were used to build the SCoRE knowledge base, and what was each used for?",
+      "retrieved_contexts": [
+        "A Knowledge Base Construction The knowledge bases in four domains are constructed under the same overarching knowledge framework, which includes entities, scenarios, and propositions to express properties and relations. We first extracted knowledge from existing external resources, then manually cre...",
+        "2 Data Synthesis for SCoRE The basic methodology for generating our reasoning data revolves constructing knowledge base and ultilizing Inference Engine to generate questions. The core knowledge base is relatively small in scale, and to ensure accuracy, it primarily leverages existing knowledge bases...",
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c..."
+      ],
+      "response": "The SCoRE knowledge base was constructed by leveraging existing external resources combined with manual construction [S1], [S2]. However, the provided context does not explicitly name the specific external knowledge resources used or detail what each was used for.\n\nWe know that:\n*   Knowledge was extracted from \"existing external resources\" [S1].\n*   The core knowledge base \"primarily leverages existing knowledge bases combined with manual construction\" to ensure accuracy [S2].\n*   The overall process involved \"manually creating a reliable knowledge base that integrates diverse commonsense knowledge and scenarios\" [S3].\n*   Proposition templates were manually created and filled to generate factual statements during data synthesis [S1].\n*   Logical rules among these templates were manually connected for the Reasoner [S1].\n\n**Diagram Description:**\nThe diagram illustrates the process of **Knowledge Base Construction for SCoRE**. It shows that the SCoRE Knowledge Base is formed from two primary inputs: \"Existing External Resources\" and \"Manual Construction.\" The \"Manual Construction\" component further details the creation of \"Proposition Templates\" and the connection of \"Logical Rules.\" These elements collectively contribute to forming the SCoRE Knowledge Base, which then undergoes \"Manual Checks\" before finalization.",
+      "reference": "HowNet and ConceptNet were used for nature domain entities and properties (633 entities); Wikipedia provided 9 historical events for the time domain; a Chinese social relationship calculator provided 58 complex family relationships for the social domain.",
+      "faithfulness": 0.35,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "How many rounds of human verification were conducted for SCoRE, and what were the key findings of each round?",
+      "retrieved_contexts": [
+        "We conducted three rounds of human verification for the quality of data and the accuracy of the data reach 100% after this process. Details of human verifications and refinement are shown in Appendix C. This approach automatically turns a small commonsense knowledge base into a large dataset of mult...",
+        "time Time that a event in the statement happens B Properties of statements Our knowledge bases define certain properties to refine the context of statements, as listed in table 5. C Human Verification and Refinement Human oversight is a quality control measure for the knowledge base. We conducted a ...",
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c..."
+      ],
+      "response": "SCoRE underwent a total of three rounds of human verification [S1, S2]. This process was implemented as a quality control measure for the knowledge base [S2].\n\nHere's a breakdown of the key findings from the verification rounds:\n\n*   **First Round:** Eight graduate students were recruited to audit the knowledge base directly. Approximately 15% of the entries were revised based on their evaluations [S2].\n*   **Subsequent Rounds (Second and Third):** While the specific findings for the second and third rounds are not detailed individually, the overall outcome of all three rounds was that the data accuracy reached 100% [S1]. The full details of these human verifications and refinements are mentioned to be in Appendix C of the document [S1].\n\nThis human oversight ensures the logical reliability of SCoRE's questions, as every question links back to a formally checked proof [S1].\n\n***\n\nThe accompanying diagram illustrates the multi-round human verification process for SCoRE's knowledge base. It shows the initial knowledge base, followed by three distinct rounds of human review. The first round is highlighted with a specific outcome (15% revision), and the cumulative result after all three rounds is depicted as 100% data accuracy.",
+      "reference": "Three rounds. Round 1: 8 graduate students audited the knowledge base directly, ~15% of entries were revised. Round 2: Stratified sampling of 10% of generated data by 10 graduate students, ~30% of questions had issues. Round 3: Same procedure focusing on correctness, all domains except social reached 100% accuracy.",
+      "faithfulness": 0.35714285714285715,
+      "answer_relevancy": 0.8557684396657287,
+      "context_precision": 0.0,
+      "context_recall": 0.25
+    },
+    {
+      "user_input": "What are the different question types used in SCoRE, and how do Precise and Vague types differ?",
+      "retrieved_contexts": [
+        "When the question type is ’Precise’, the generator generates a proposition that can uniquely determine the slot of the entity or event in the scenario and mask the relevant information. When the question type is ’Vague’, the generator generates a proposition that multiple entities can satisfy this p...",
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c...",
+        "Fine-grained Labels Questions in SCoRE are generated by connecting domain knowledge via logical rules, ensuring a clear and traceable reasoning workflow. 7 kinds of labels are recorded during 5"
+      ],
+      "response": "SCoRE utilizes different question types, including 'Precise' and 'Vague', to evaluate complex logical reasoning [S1]. While there are \"7 kinds of labels\" recorded for questions in SCoRE, the provided context specifically details these two types [S3].\n\nHere's how 'Precise' and 'Vague' question types differ:\n\n*   **Precise Questions**\n    For a 'Precise' question, the system generates a proposition designed to uniquely identify a specific entity or event within a given scenario. The relevant information that leads to this unique identification is then masked [S1]. This means a precise question aims for a single, definitive answer.\n\n*   **Vague Questions**\n    In contrast, a 'Vague' question involves a proposition that can be satisfied by multiple entities. The system identifies all these entities as potential answers [S1]. This type of question allows for more than one correct response, focusing on identifying all possibilities that fit the given proposition.\n\n**Key Difference:**\nThe fundamental difference lies in the uniqueness of the answer: 'Precise' questions are designed to have a single, uniquely determined answer, whereas 'Vague' questions allow for multiple entities to satisfy the proposition, leading to several potential answers [S1].",
+      "reference": "Precise questions generate a proposition that uniquely determines the slot of a single entity. Vague questions generate a proposition that multiple entities can satisfy, requiring all matching entities as the answer. Other types are Correct Statement and Incorrect Statement.",
+      "faithfulness": 0.8947368421052632,
+      "answer_relevancy": 0.9289163162556928,
+      "context_precision": 0.9999999999,
+      "context_recall": 0.3333333333333333
+    },
+    {
+      "user_input": "What factors does the Space domain difficulty formula use in SCoRE, and what does each measure?",
+      "retrieved_contexts": [
+        "None of the above Answer: ABC E Difficulty Calculation Formula of Reasoning Problems in Various Domains All domain-specific difficulty formulas follow a unified design philosophy: they combine weighted indicators reflecting cognitive load (e. g. , entity count, reasoning chain length), knowledge com...",
+        "Similarly, the level of precision in describing spatial relations, such as the difference between vague and precise type of the six-slot scenario in space domain also affects the models to understand and respond correctly. Downward Accuracy Across Difficulty Levels Figure 4 presents the average accu...",
+        "Level Accuracy for Domain: space (CN/EN Avg with Labels) 100 Difficulty Level Easy Medium Hard 80 60 40 Accuracy (Avg of CN & EN) 20 0 Llama-3. 3-7 claude-3-5- deepseek-ch deepseek-r1 deepseek-re glm-4-plus glm-zero-pr gpt-4o o1-mini o1-preview o3-mini qwen-25-72B qwen-max qwq-32B 0B-Instruct sonnet..."
+      ],
+      "response": "The Space domain difficulty formula in SCoRE follows a unified design philosophy that combines weighted indicators to reflect various aspects of a problem's complexity [IndividualProject_RefPaper.pdf].\n\nThe general categories of indicators used in these formulas include:\n*   **Cognitive load:** This measures factors like the number of entities involved or the length of the reasoning chain required [IndividualProject_RefPaper.pdf].\n*   **Knowledge complexity:** This relates to aspects such as property difficulty or the type of scene being described [IndividualProject_RefPaper.pdf].\n*   **Information completeness:** This considers elements like explicit mentions of information or the overall coverage of details [IndividualProject_RefPaper.pdf].\n\nFor the Space domain specifically, the formula is partially provided as:\n`level = 0.3nm + 0.5pr + 0.` [IndividualProject_RefPaper.pdf]\n\nWhile the formula's structure and its coefficients (0.3 and 0.5) are given, the retrieved context does not explicitly define what `nm` and `pr` represent or precisely what aspects they measure within the Space domain difficulty calculation. The formula also appears to be truncated at the end [IndividualProject_RefPaper.pdf].",
+      "reference": "Space difficulty = 0.3*nm + 0.5*pr + 0.2*al, where nm = number of entities, pr = precision (1 if entities in the question exceed 2), and al = entity coverage completeness (1 if entity coverage of the text is incomplete).",
+      "faithfulness": 0.5238095238095238,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What causes answer aggregation errors in LLMs on SCoRE multiple-choice questions?",
+      "retrieved_contexts": [
+        "This also highlights our dataset’s ability to reveal not only reasoning failures, but also cases where models over-apply complex logic and overlook intuitive solutions. Detailed examples are shown in Appendix K. Model’s Tendency in Single-Choice Questions and Logical Contradictions Lead to Answer Ag...",
+        "SCoRE contains 100k bilingual (Chi- nese–English) multiple-choice questions whose reasoning chains span 2–11 hops and are grouped into various difficulty levels. Each question is accompanied by fine-grained knowledge labels, explicit reasoning chains, and difficulty lev- els for diagnostic evaluatio...",
+        "[2503.14996] Right Answer, Wrong Score: Uncovering the Inconsistencies of LLM Evaluation in Multiple-Choice Question Answering Skip to main content Learn about arXiv becoming an independent nonprofit. We gratefully acknowledge support from the Simons Foundation, member institutions , and all contrib..."
+      ],
+      "response": "Answer aggregation errors in Large Language Models (LLMs) when tackling SCoRE multiple-choice questions can stem from several factors:\n\n1.  **Single-Choice Question Bias**: LLMs often treat multiple-choice questions as if they were single-choice. This can lead to errors where the model outputs an answer immediately after finding one correct option, potentially overlooking other correct choices in a multiple-answer scenario. This tendency might be influenced by the high frequency of single-choice questions in their training or inference data [IndividualProject_RefPaper.pdf].\n2.  **Premature Stopping**: Related to the single-choice bias, models may exhibit \"premature stopping,\" where they cease evaluating options once a seemingly correct answer is identified, even if the question requires considering all possibilities or has multiple correct answers [IndividualProject_RefPaper.pdf].\n3.  **Logical Contradictions**: Inconsistencies in the model's internal reasoning can lead to answer aggregation errors. For example, a model might correctly infer that option 'A' is right but then ultimately output 'B' as the answer, indicating a breakdown in the final decision-making process [IndividualProject_RefPaper.pdf].\n\nThese issues highlight deficiencies in LLMs' decision-making strategies, which are effectively exposed by datasets like SCoRE [IndividualProject_RefPaper.pdf]. SCoRE itself is a bilingual dataset of 100,000 multiple-choice questions designed to evaluate long-chain commonsense reasoning in LLMs [IndividualProject_RefPaper.pdf, SCoRE].",
+      "reference": "Two causes: (1) Models are biased toward single-choice behavior and stop checking once one correct answer is found. (2) Logical contradictions cause the model to reason toward one answer but output a different one.",
+      "faithfulness": 0.38095238095238093,
+      "answer_relevancy": 0.9068287386424189,
+      "context_precision": 0.9999999999,
+      "context_recall": 1.0
+    },
+    {
+      "user_input": "Why do most LLMs perform better on Chinese questions than English in the space, nature, and mixed domains on SCoRE?",
+      "retrieved_contexts": [
+        "Cultural and Linguistic Differents Affects Performance It is generally believed that large language models behave better in English than in non-English languages due to the quality and quantity of training data [20]. However, on the contrary, our results show that most models perform better on Chine...",
+        "Figure 3: The performance of LLMs on Chinese and English questions with different knowledge attributes and question types. Here, if the answer to a question involves only a single entity, it is termed \"precise. \" If it involves multiple entities, it is termed \"vague\". Although the overall size of En...",
+        "Do Large Language Models Have an English “Accent”? Evaluating and Improving the Naturalness of Multilingual LLMs 1 Introduction 2 Related Work 3 Evaluation Metrics for Naturalness 3.1 Lexical Naturalness 3.2 Syntactic Naturalness 4 Cross-lingual Analysis of Naturalness 4.1 Dataset and Evaluation 4.2..."
+      ],
+      "response": "While it's generally assumed that Large Language Models (LLMs) perform better in English due to the quantity and quality of training data, research has shown that most models actually perform better on Chinese questions than English questions in the space, nature, and mixed domains [IndividualProject_RefPaper.pdf].\n\nThis unexpected performance difference can be attributed to several factors:\n\n1.  **Entity Frequency and Cultural Relevance** Some entities, particularly those related to geography or culture, may appear more frequently in Chinese language corpora, even if the overall volume of English training data is larger. This abundance of data in Chinese for specific entities can lead to better understanding of commonsense knowledge related to these entities in Chinese contexts compared to English [IndividualProject_RefPaper.pdf].\n2.  **Semantic Ambiguity** English words tend to have more semantic ambiguity than Chinese words. A single English word can have multiple different meanings, which might correspond to related or unrelated Chinese words. This increased ambiguity in English questions can cause the LLM to confuse different senses of a word during its reasoning process, leading to less accurate answers [IndividualProject_RefPaper.pdf].\n\nThese reasons highlight how linguistic and cultural nuances, along with the distribution of specific knowledge within training data, can influence an LLM's performance across different languages and domains.",
+      "reference": "Two reasons: (1) Some entities are culturally tied to East Asia and appear more frequently in Chinese corpora, so models understand their properties better in Chinese. (2) English has higher semantic ambiguity where a single word maps to multiple unrelated concepts, causing reasoning errors across steps.",
+      "faithfulness": 0.21739130434782608,
+      "answer_relevancy": 0.8551614930659309,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "How was the SCoRE test set selected from the full 100,000-question dataset, and what coverage does it guarantee?",
+      "retrieved_contexts": [
+        "Considering the testing cost, we intentionally selected 6,000 questions that can cover all knowledge points in our knowledge base to form the SCoRE test dataset. Knowledge Density SCoRE test set consists of 6,000 questions bilingual in Chinese and English spanning four major commonsense domains: spa...",
+        "We conducted three rounds of human verification for the quality of data and the accuracy of the data reach 100% after this process. Details of human verifications and refinement are shown in Appendix C. This approach automatically turns a small commonsense knowledge base into a large dataset of mult...",
+        "Just a moment..."
+      ],
+      "response": "The SCoRE test set was selected from a larger dataset containing 100,000 questions [IndividualProject_RefPaper.pdf, S2].\n\n### Selection Process\n\nFrom the full 100,000-question dataset, 6,000 questions were \"intentionally selected\" to form the SCoRE test dataset [IndividualProject_RefPaper.pdf, S1]. This selection considered the \"testing cost\" [IndividualProject_RefPaper.pdf, S1]. While the specific algorithm or detailed methodology for this \"intentional selection\" is not elaborated in the provided context beyond ensuring coverage, the goal was clear.\n\n### Coverage Guarantee\n\nThe SCoRE test set is designed to guarantee comprehensive coverage of various aspects of commonsense knowledge [IndividualProject_RefPaper.pdf, S1]:\n\n*   **Knowledge Points:** It covers all knowledge points present in the underlying knowledge base [IndividualProject_RefPaper.pdf, S1].\n*   **Domains:** It spans four major commonsense domains: space, time, social, and nature. Additionally, there is a \"mix domain\" for questions that might involve multiple domain labels [IndividualProject_RefPaper.pdf, S1].\n*   **Linguistic Coverage:** The 6,000 questions are bilingual, available in both Chinese and English, with 600 questions allocated per domain per language [IndividualProject_RefPaper.pdf, S1].\n*   **Knowledge Base Components:** The questions collectively cover:\n    *   11 scenarios\n    *   707 entities\n    *   29 properties\n    *   109 relations\n    [IndividualProject_RefPaper.pdf, S1]\n\n### Diagram Description\n\nThe accompanying diagram illustrates the relationship between the full SCoRE dataset and the SCoRE test set. It shows that the \"Full SCoRE Dataset\" contains 100,000 questions, from which 6,000 questions are \"Intentionally Selected\" to form the \"SCoRE Test Set.\" The diagram also highlights the key coverage guarantees of the test set, including its 6,000 questions, bilingual nature, four commonsense domains, and comprehensive coverage of knowledge points, scenarios, entities, properties, and relations. The selection process is influenced by \"Testing Cost\" and aims to cover \"All Knowledge Points.\"",
+      "reference": "6,000 questions were selected to cover all knowledge points, with 600 questions per domain per language. The test set spans all 11 scenarios, 707 entities, 29 properties, and 109 relations.",
+      "faithfulness": 0.5238095238095238,
+      "answer_relevancy": 0.8510269358355061,
+      "context_precision": 0.9999999999,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "Which model achieved the highest overall accuracy on SCoRE, and which open-source model performed best?",
+      "retrieved_contexts": [
+        "In contrast, DeepSeek-R1, the top-performing open-source model, under- performs relative to the closed-source models. Overall, our benchmark remains a challenging test, effectively highlighting the limitations of current models across various domains. Notably, LLMs specifically trained for inference...",
+        "3. We conducted evaluations using 13 state-of-the-art reasoning LLMs. The highest-performing model achieved a score of 69. 78%, and the average accuracy on the hard set was only 47. 91%, indicating that SCoRE is challenging for the top-performing models. 4. Through case analysis, we identified sever...",
+        "Table 3: Models Performance on Different Domains (Accuracy %). Best performers in each domain are bolded. Model Space Nature Time Social Mix Avg CN EN CN EN CN EN CN EN CN EN Closed-Source Models o1-preview 67. 17 58. 83 89. 83 84. 33 79. 67 80. 67 49. 67 71. 67 61. 17 54. 83 69. 78 o1-mini 62. 00 5..."
+      ],
+      "response": "Based on the provided documents:\n\nThe model that achieved the highest overall accuracy on SCoRE is **o1-preview**, with a score of 69.78% [S2, S3].\n\nThe top-performing open-source model mentioned is **DeepSeek-R1** [S1]. However, its specific accuracy score is not provided in the retrieved context to compare directly with other models in Table 3 [S3].",
+      "reference": "o1-preview achieved the highest overall accuracy at 69.78%. Among open-source models, DeepSeek-R1 was the top performer at 64.65%, though it underperformed relative to closed-source models.",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.3333333333,
+      "context_recall": 0.5
+    },
+    {
+      "user_input": "What does SCoRE reveal about performance variation across different scenarios within the same domain?",
+      "retrieved_contexts": [
+        "Lower Performance on Rarer Scenarios We simultaneously analyze the performance of different models across various knowledge domains and scenarios, and the results are presented in Figure 3. The overall distribution of correct rates follows a similar trend. However, even within the same domain, there...",
+        "Seq. & Arith. cn 1. 00 0. 85 0. 49 0. 71 en 1. 00 0. 60 0. 62 0. 73 I Detailed Performance on Different Domains In this section, we provide a detailed analysis of model performance across different domains and difficulty levels. As illustrated in Figures 6, 7, 8, 9, and 10, our difficulty classifica...",
+        "7 Conclusion In this paper, we introduce SCoRE, a bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios through multi-hop inference chains generated through a knowledge-driven synthetic data strategy. The dataset contains 100,000 questions across three difficulty ..."
+      ],
+      "response": "SCoRE, a bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios [IndividualProject_RefPaper.pdf, S3], reveals that even within the same knowledge domain, there are significant performance variations across different scenarios [IndividualProject_RefPaper.pdf, S1].\n\nSpecifically, the research indicates:\n*   **Social Relationships:** Models perform better on general social relationships compared to family relationships [IndividualProject_RefPaper.pdf, S1].\n*   **Spatial Scenarios:** Models show weaker performance when dealing with spatial scenarios like the layout of a centrifugal hexagon, as opposed to arrangements such as three rows and two columns [IndividualProject_RefPaper.pdf, S1].\n\nThese findings suggest that the rarity or specificity of a scenario can lead to lower performance [IndividualProject_RefPaper.pdf, S1].",
+      "reference": "Even within the same domain, there are significant performance differences across scenarios. Models perform better on general social relationships than family relationships, and show weaker performance on centrifugal hexagon layouts compared to three-rows-two-columns arrangements.",
+      "faithfulness": 0.36363636363636365,
+      "answer_relevancy": 0.8047190793177992,
+      "context_precision": 0.9999999999,
+      "context_recall": 0.5
+    },
+    {
+      "user_input": "What are the three limitations of SCoRE identified by the authors?",
+      "retrieved_contexts": [
+        "7 Conclusion In this paper, we introduce SCoRE, a bilingual dataset designed to evaluate complex logical reasoning in commonsense scenarios through multi-hop inference chains generated through a knowledge-driven synthetic data strategy. The dataset contains 100,000 questions across three difficulty ...",
+        "cn Abstract Currently, long-chain reasoning remains a key challenge for large language models (LLMs) because natural texts lack sufficient explicit reasoning data. However, existing benchmarks suffer from limitations such as narrow coverage, short rea- soning paths, or high construction costs. We in...",
+        "To highlight these issues, we introduce SCoRE, a diagnostic benchmark designed to evaluate complex logical reasoning in commonsense scenarios through knowledge-driven synthetic data generation. SCoRE contains 100,000 bilingual (Chinese and English) questions focusing on four domains of commonsense c..."
+      ],
+      "response": "The provided context explicitly identifies one limitation of SCoRE:\n\n*   **Scale of Knowledge Base:** The authors note that while their knowledge base covers multiple domains and types of knowledge, its overall scale is a limitation [IndividualProject_RefPaper.pdf].\n\nThe documents mention limitations of *existing benchmarks* (such as narrow coverage, short reasoning paths, or high construction costs) which SCoRE aims to address [IndividualProject_RefPaper.pdf], but these are not presented as limitations of SCoRE itself.\n\nTherefore, the provided context is insufficient to identify three distinct limitations of SCoRE.",
+      "reference": "(1) Limited scale of the knowledge base - more entities, properties, relationships, and scenarios are needed. (2) Limited Mix domain combinations - currently only integrates two domains at a time. (3) Manual error type analysis - the process is time-consuming, labor-intensive, and cannot comprehensively cover all error samples.",
+      "faithfulness": 0.8181818181818182,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What are the three steps of the SpeeDF framework?",
+      "retrieved_contexts": [
+        "This paper introduces SpeeDF, a novel three-step framework for safeguarding privacy in speech data, with a specific focus on Singaporean English (Singlish). By integrating automatic speech recognition, named entity recognition, and information anonymization, SpeeDF effectively protects sensitive Per...",
+        "PROPOSED METHOD Figure 1 illustrates the proposed SpeeDF framework for speech de-identification. The framework operates in three steps: • Speech Recognition: The input speech signal is processed by an automatic speech recognition model, converting it into text. To addresses the challenge of limited ...",
+        "Finding the right balance is crucial to ensure both privacy protection and the advancement of speech-related technologies. This paper proposes a novel speech de-identification framework, SpeeDF, that tackles the challenges of anonymizing spoken data in Singaporean English (Singlish). SpeeDF addresse..."
+      ],
+      "response": "The SpeeDF framework is a novel three-step approach designed to safeguard privacy in speech data, particularly focusing on Singaporean English (Singlish) [TENCON2024.pdf].\n\nHere are the three steps of the SpeeDF framework:\n\n1.  **Speech Recognition**: The initial step involves processing the input speech signal using an automatic speech recognition (ASR) model to convert it into text [TENCON2024.pdf]. SpeeDF customizes ASR to accurately recognize local accents and Singlish language patterns [TENCON2024.pdf]. This step also incorporates a data augmentation approach that leverages large language models (LLMs) to create realistic speech data rich in diverse Personally Identifiable Information (PII) examples, addressing the challenge of limited real-world speech data for de-identification [TENCON2024.pdf].\n\n2.  **Named Entity Recognition (PII Detection)**: Following speech recognition, the framework employs named entity recognition (NER) to detect sensitive PII within the converted text [TENCON2024.pdf]. The enhanced PII detection is supported by the data augmentation techniques mentioned in the first step, which improve the framework's ability to identify sensitive information [TENCON2024.pdf].\n\n3.  **Information Anonymization (Multi-Level PII Anonymization)**: The final step involves applying information anonymization techniques to protect the detected PII [TENCON2024.pdf]. SpeeDF uses different anonymization techniques based on the sensitivity level of the identified PII, aiming to balance privacy protection with data usability [TENCON2024.pdf]. This dual-layer privacy protection safeguards both speech content and speaker identity [TENCON2024.pdf].\n\n***\n\nThe diagram illustrates the three-step SpeeDF framework for speech de-identification.\n\n*   **Key Components and Relationships:**\n    *   **Input Speech Signal:** This is the starting point, representing the raw speech data.\n    *   **Speech Recognition:** The first step, depicted as processing the input speech signal and converting it into text. This component includes the aspect of customized ASR for Singlish and data augmentation using LLMs.\n    *   **Named Entity Recognition (PII Detection):** The second step, which takes the text output from speech recognition and identifies sensitive Personally Identifiable Information (PII) within it.\n    *   **Information Anonymization (Multi-Level PII Anonymization):** The third and final step, where different anonymization techniques are applied to the detected PII to protect privacy.\n    *   **De-identified Speech Data:** The output of the framework, representing the speech data with sensitive information protected while preserving naturalness.",
+      "reference": "(1) Speech Recognition (ASR), (2) PII Identification (NER), and (3) Speech Anonymization.",
+      "faithfulness": 0.5714285714285714,
+      "answer_relevancy": 0.8491708619401721,
+      "context_precision": 0.99999999995,
+      "context_recall": 0.3333333333333333
+    },
+    {
+      "user_input": "Which ASR model did SpeeDF use, and how was it adapted for Singlish?",
+      "retrieved_contexts": [
+        "Finding the right balance is crucial to ensure both privacy protection and the advancement of speech-related technologies. This paper proposes a novel speech de-identification framework, SpeeDF, that tackles the challenges of anonymizing spoken data in Singaporean English (Singlish). SpeeDF addresse...",
+        "In: Jour nal of biomedical informatics 75 (2017),S34–S42 [5] Yang, Yuhang, et al. ”Adapting OpenAI’s Whisper for Speech Recog- nition on Code-Switch Mandarin-English SEAME and ASRU2019 Datasets. ” arXiv preprint arXiv:2311. 17382 (2023). [6] Yuen, Kwok Chin, Li Haoyang, and Chng Eng Siong. ”ASR Mode...",
+        "Advancing Singlish Understanding: Bridging the Gap with Datasets and Multimodal Models 1 Introduction 2 Related Work 3 Multitask National Speech Corpus 3.1 Source 3.2 Data Generation and Human Annotation 4 SingAudioLLM 4.1 Encoder 4.2 Modality Adapter 4.3 Large Language Model 4.4 Training Method 5 E..."
+      ],
+      "response": "The provided context describes how the SpeeDF framework adapts Automatic Speech Recognition (ASR) for Singlish, but it does not explicitly name the specific ASR model that SpeeDF uses.\n\nHowever, the context does explain how SpeeDF's ASR component is customized for Singlish:\n\n### How SpeeDF Adapts ASR for Singlish\nSpeeDF employs a \"Customized Automatic Speech Recognition\" approach to handle Singlish [S1]. This customization involves tailoring the ASR system to:\n*   **Recognize Local Accents:** The system is designed to identify and process the unique accents present in Singaporean English (Singlish) [S1].\n*   **Understand Singlish Language Patterns:** It is specifically adapted to comprehend the distinct linguistic structures and patterns characteristic of the Singlish language [S1].\n\nThis tailored approach aims to improve the accuracy of speech recognition for Singlish, which is crucial for the subsequent steps of detecting and anonymizing personally identifiable information (PII) within spoken data [S1].\n\n### Diagram Description\nThe diagram, likely Figure 3 from the TENCON2024 paper, visually represents the **SpeeDF prototype system** [S2]. It typically showcases a user interface where individuals can upload an audio file for processing. This interface would illustrate the entry point for users to interact with the SpeeDF framework, initiating the de-identification process on their spoken data [S2].",
+      "reference": "SpeeDF used OpenAI's Whisper model, fine-tuned on 500 conversations from Part 6 of the Singapore English National Speech Corpus (NSC) using Low-Rank Adaptation (LoRA).",
+      "faithfulness": 0.05555555555555555,
+      "answer_relevancy": 0.0,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What was the Word Error Rate (WER) before and after fine-tuning the ASR model on NSC data?",
+      "retrieved_contexts": [
+        "To evaluate the performance of fine-tuned ASR, we have invited four speakers (3 male 1 female) to record the 150 sentences from our NER test set. All the speakers are not present in the NSC corpus. Table I presents the performance of the fine-tuned model on Singlish speech recognition. The word erro...",
+        "The baseline ASR model incorrectly recognized the word ”singel” as a company name, likely due to its unfamiliarity with Singaporean English. However, after fine-tuning the model on Singaporean English data, it accurately identified the word. Figure 2 illustrates two speech anonymization approaches w...",
+        "To better capture the unique characteristics of Singaporean English (Singlish), we fine-tuned the Whisper model on a dataset of conversational samples from the Singapore English National Speech Corpus (NSC) [16]. B. PII identification Singlish. Additionally, [5] worked on accent-robust ASR for code-..."
+      ],
+      "response": "The Word Error Rate (WER) of the Automatic Speech Recognition (ASR) model changed after fine-tuning on the National Speech Corpus (NSC) data.\n\n*   **Before fine-tuning:** The Whisper-medium.en ASR model had a WER of **17.7%** [TENCON2024.pdf]. This baseline model struggled with Singaporean English, often misrecognizing words due to unfamiliarity [TENCON2024.pdf].\n*   **After fine-tuning:** After being fine-tuned on conversational samples from the Singapore English National Speech Corpus (NSC), the WER was reduced to **13.56%** [TENCON2024.pdf]. This fine-tuning helped the model accurately identify words in Singaporean English [TENCON2024.pdf].\n\n***\n\n### Diagram Description\n\nThe diagram (Figure 2) illustrates examples of speech anonymization using proposed methods within SpeeDF [TENCON2024.pdf]. It specifically shows how two Personally Identifiable Information (PII) elements—a person's name and a phone number—are identified and handled [TENCON2024.pdf]. The diagram likely depicts an example sentence before and after adaptation, demonstrating the anonymization process, possibly using a simple replacement method where PIIs are either removed or replaced with noise [TENCON2024.pdf].",
+      "reference": "WER reduced from 17.7% (baseline Whisper-medium.en) to 13.56% after fine-tuning on NSC data.",
+      "faithfulness": 0.4,
+      "answer_relevancy": 0.8421159183692165,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What NLP library was used to train the PII detection model, and what types of entities were targeted?",
+      "retrieved_contexts": [
+        "Addressing the scarcity of highly sensitive entities in public datasets, we leverage a large language model to generate synthetic data tailored to training our named entity recognition model. For both NER model training and identification of Personally Identifiable Information entities, we utilize s...",
+        "B. PII identification and works for all PII types. However, with frequent PII occurrences, the audio can become unusable and unpleasant. • Category-Preserving Replacement: This approach prior- itizes preserving the original audio quality and speaker characteristics. PII is first replaced with fictio...",
+        "This approach can act as a sanity check on the correctness of synthesized speech samples used for training. Additionally, incorporating external data, as explored by [9], holds promise for further enhancing speech NER performance. Their findings suggest that external data can be particularly benefic..."
+      ],
+      "response": "The PII detection model was trained using the NLP library spaCy3 [TENCON2024.pdf].\n\nThe named entity recognition (NER) model, which handles the PII identification task, targeted:\n*   Common entities such as names [TENCON2024.pdf].\n*   Singapore-specific entities, including NRIC, passport numbers, phone numbers, and various financial details [TENCON2024.pdf].",
+      "reference": "spaCy was used. Targets included common entities (names) and Singapore-specific entities such as NRIC, passport numbers, phone numbers, and financial details.",
+      "faithfulness": 0.16666666666666666,
+      "answer_relevancy": 0.8444576161935661,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What five granular evaluation metrics did SpeeDF propose beyond the standard F1 score for PII detection?",
+      "retrieved_contexts": [
+        "To provide a more granular performance analysis, we propose alternative metrics consist of: the percentage of perfect entity match (Perfect), the percentage of partial match (Partial), the percentage of substitution (Substitution), the percentage of insertion (Hallucination) and the percentage of de...",
+        "PROPOSED METHOD Figure 1 illustrates the proposed SpeeDF framework for speech de-identification. The framework operates in three steps: • Speech Recognition: The input speech signal is processed by an automatic speech recognition model, converting it into text. To addresses the challenge of limited ...",
+        "Enhancing the De-identification of Personally Identifiable Information in Educational Data 1 Introduction 2 Related Work 2.1 Deidentification of Personally Identifiable Information 2.2 Large Language Models for Data Privacy 3 Methods 3.1 Data and Data Pre-processing 3.2 Models for PII Detection 3.3 ..."
+      ],
+      "response": "The SpeeDF framework proposes five granular evaluation metrics beyond the standard F1 score to provide a more detailed understanding of error types encountered in PII detection [TENCON2024.pdf]:\n\n1.  **Perfect entity match (Perfect)**: The percentage of entities that are perfectly matched.\n2.  **Partial match (Partial)**: The percentage of entities that are partially matched.\n3.  **Substitution (Substitution)**: The percentage of entities that are incorrectly substituted.\n4.  **Insertion (Hallucination)**: The percentage of incorrect entities that are inserted (false positives).\n5.  **Deletion (Omission)**: The percentage of actual entities that are missed (false negatives).\n\nThese metrics offer a more detailed analysis of performance compared to the traditional F1 score, which can be insufficient for understanding specific errors in spontaneous speech data [TENCON2024.pdf].\n\n***\n\n### Diagram Description\n\nThe automatically generated diagram would likely illustrate the **SpeeDF framework for speech de-identification**, as described in [TENCON2024.pdf]. This framework typically operates in three main steps:\n\n1.  **Speech Recognition**: An input speech signal is processed by an automatic speech recognition (ASR) model to convert it into text.\n2.  **Data Augmentation**: To address limited real-world speech data for de-identification, especially for specific accents like Singaporean English, a data augmentation approach leverages large language models (LLMs). This involves starting with a handcrafted seed dataset of PII, using an LLM to learn its stylistic patterns, and then generating new, realistic speech data rich in diverse PII examples.\n3.  **De-identification**: The detected PII in the text is then de-identified (anonymized or replaced) to protect privacy.\n\nThe diagram would visually represent this flow, showing the progression from raw speech input through text conversion, data enhancement, and finally to the de-identified output.",
+      "reference": "Perfect match (%), Partial match (%), Substitution (%), Hallucination/Insertion (%), and Omission/Deletion (%).",
+      "faithfulness": 0.4318181818181818,
+      "answer_relevancy": 0.8097224257211613,
+      "context_precision": 0.9999999999,
+      "context_recall": 0.8
+    },
+    {
+      "user_input": "How did the data-augmented PII model compare to the baseline on F1 score and hallucination rate?",
+      "retrieved_contexts": [
+        "The results demonstrate that the augmented model surpasses the baseline model in achieving a higher overall perfect match rate, a lower hallucination rate, and a lower omission rate. While the baseline model exhibits higher partial match and lower substitution rates, these scores might be inflated b...",
+        "Addressing the scarcity of highly sensitive entities in public datasets, we leverage a large language model to generate synthetic data tailored to training our named entity recognition model. For both NER model training and identification of Personally Identifiable Information entities, we utilize s...",
+        "Mitigating Object Hallucination in MLLMs via Data-augmented Phrase-level Alignment 1 Introduction 2 Method: Data-augmented phrase-level alignment (DPA) 3 Experiment setup 4 Results 4.1 Evaluation on object hallucination 4.2 Evaluation on hallucination benchmarks beyond object hallucination 4.3 Evalu..."
+      ],
+      "response": "The data-augmented PII (Personally Identifiable Information) detection model showed improved performance compared to the baseline model in both F1 score and hallucination rate [TENCON2024.pdf].\n\nHere's a breakdown of the comparison:\n\n*   **F1 Score:**\n    *   **Baseline model:** 0.67\n    *   **Data-augmented model:** 0.8\n    *   The data-augmented model achieved a higher F1 score, indicating better overall accuracy [TENCON2024.pdf].\n\n*   **Hallucination Rate:**\n    *   **Baseline model:** 73.19%\n    *   **Data-augmented model:** 26.77%\n    *   The data-augmented model significantly reduced the hallucination rate, meaning it generated fewer false positives [TENCON2024.pdf].\n\nThe data-augmented model was trained using synthetic data generated by a large language model to address the scarcity of sensitive entities in public datasets, which helped in improving its performance for PII entity identification [TENCON2024.pdf].",
+      "reference": "The augmented model improved F1 from 0.67 to 0.80, and reduced hallucination rate from 73.19% to 26.77%.",
+      "faithfulness": 0.4666666666666667,
+      "answer_relevancy": 0.8445717908040034,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What are the two speech anonymization methods proposed in SpeeDF?",
+      "retrieved_contexts": [
+        "Finding the right balance is crucial to ensure both privacy protection and the advancement of speech-related technologies. This paper proposes a novel speech de-identification framework, SpeeDF, that tackles the challenges of anonymizing spoken data in Singaporean English (Singlish). SpeeDF addresse...",
+        "Speech Anonymization • PII Identification: The text transcription is then analyzed by a PII identification module to detect and locate any sensitive personally identifiable information within the text. In Speech anonymization step, given the identified PIIs within the speech data, along with their l...",
+        "SpeeDF - A Speech De-identification Framework Chandra Sekar Veerappan Singapore Institute of Technology chandra. veerappan@singaporetech. edu. sg Priyanshu Dhingra Rajiv Gandhi Institute of Petroleum Technology priyanshudhingra1@gmail. com Daniel Zhengkui Wang Singapore Institute of Technology zheng..."
+      ],
+      "response": "The SpeeDF framework proposes two primary methods for speech anonymization to redact Personally Identifiable Information (PII):\n\n1.  **Simple Replacement:** This method directly replaces detected PII with generic sounds like white noise or a beep. It is noted for its ease of implementation [S2].\n2.  **Speech Anonymization:** In this method, the identified PII undergoes a more dedicated anonymization process within a specific module. The goal is to protect sensitive information while maintaining the overall content and usability of the speech data [S2].",
+      "reference": "(1) Simple Replacement: replaces PII with white noise or a beep; (2) Category-Preserving Replacement: replaces PII with fictional data of the same category (e.g., a fake phone number for a real one).",
+      "faithfulness": 0.2,
+      "answer_relevancy": 0.8849183887516481,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "How did SpeeDF leverage LLMs to address data scarcity for NER training?",
+      "retrieved_contexts": [
+        "Addressing the scarcity of highly sensitive entities in public datasets, we leverage a large language model to generate synthetic data tailored to training our named entity recognition model. For both NER model training and identification of Personally Identifiable Information entities, we utilize s...",
+        "SpeeDF - A Speech De-identification Framework Chandra Sekar Veerappan Singapore Institute of Technology chandra. veerappan@singaporetech. edu. sg Priyanshu Dhingra Rajiv Gandhi Institute of Petroleum Technology priyanshudhingra1@gmail. com Daniel Zhengkui Wang Singapore Institute of Technology zheng...",
+        "How to Train Data-Efficient LLMs 1 Introduction 1.1 Contributions 2 Related Work 2.1 Coverage Sampling 2.2 Quality-score Sampling 3 Methods 3.1 Ask-LLM Sampling 3.2 Density Sampling 3.3 Sampling Techniques 3.4 Relationships Between Methods 4 Experiments 4.1 Models 4.2 Datasets 4.3 Evaluation 4.4 Doe..."
+      ],
+      "response": "SpeeDF leveraged Large Language Models (LLMs) to address data scarcity for Named Entity Recognition (NER) training by generating synthetic data [S1].\n\nSpecifically:\n*   **Addressing Scarcity:** To overcome the limited availability of highly sensitive entities in public datasets, an LLM was utilized to create synthetic data [S1].\n*   **NER Model Training:** This LLM-generated synthetic data was then used to train the named entity recognition model [S1].\n*   **PII Detection:** The overall Personally Identifiable Information (PII) detection model, which incorporates NER, was trained using both initial \"seed data\" and the data augmented by the LLM's generation [S1, S2].\n\nThis approach allowed SpeeDF to improve the training of its NER and PII detection capabilities, particularly for less-studied PII like NRIC and passport numbers [S1, S2].",
+      "reference": "A handcrafted seed dataset with PII examples was created; an LLM then learned its stylistic patterns and generated new, diverse synthetic speech samples rich in PII.",
+      "faithfulness": 0.2727272727272727,
+      "answer_relevancy": 0.9021673940687551,
+      "context_precision": 0.0,
+      "context_recall": 0.0
+    },
+    {
+      "user_input": "What three key challenges does speech de-identification face, as identified in the paper?",
+      "retrieved_contexts": [
+        "This raises concerns about potential misuse, leading to privacy breaches, identity theft, and other harm. The data can even be used to train machine learning models, further amplifying privacy risks [3]. Speech de-identification is the process of anonymizing spoken language data by removing or modif...",
+        "Finding the right balance is crucial to ensure both privacy protection and the advancement of speech-related technologies. This paper proposes a novel speech de-identification framework, SpeeDF, that tackles the challenges of anonymizing spoken data in Singaporean English (Singlish). SpeeDF addresse...",
+        "These natural variations in speech can pose challenges for speech recognition and entity recognition systems. Data Scarcity and privacy concerns: Training effective de- identification models requires a large amount of high-quality"
+      ],
+      "response": "The paper identifies three key challenges that speech de-identification faces:\n\n1.  **Variations in Natural Speech**\n    Speech data is often informal, containing elements like slang, contractions, and incomplete sentences. Additionally, spoken language frequently includes diverse accents, especially in multicultural regions like Singapore. These natural variations can complicate speech recognition and entity recognition systems [TENCON2024.pdf, Section 4; TENCON2024.pdf, Section 5].\n\n2.  **Data Scarcity and Privacy Concerns**\n    Training effective de-identification models requires a substantial amount of high-quality data. However, there is a scarcity of such data, partly due to the very privacy concerns that speech de-identification aims to address [TENCON2024.pdf, Section 5].\n\n3.  **Balancing Privacy Protection with Usability and Technological Advancement**\n    A crucial challenge is to find the right balance between protecting sensitive information and preserving the overall content and usability of the speech",
+      "reference": "(1) Variations in natural speech (accents, code-switching); (2) data scarcity and privacy concerns for obtaining annotated data; (3) the privacy-utility tradeoff between anonymization and research usability.",
+      "faithfulness": 0.4375,
+      "answer_relevancy": 0.8656317719639749,
+      "context_precision": 0.0,
+      "context_recall": 1.0
+    },
+    {
+      "user_input": "What additional privacy layer is offered by the category-preserving anonymization method after PII replacement?",
+      "retrieved_contexts": [
+        "same category: The person’s name is replaced with a generic name like ”John Doe. ” The phone number is replaced with a different phone number sequence (e. g. , ”1234-5678”). The anonymized text can then be fed into a text-to-speech or voice cloning system to generate new audio with a different voice...",
+        "B. PII identification and works for all PII types. However, with frequent PII occurrences, the audio can become unusable and unpleasant. • Category-Preserving Replacement: This approach prior- itizes preserving the original audio quality and speaker characteristics. PII is first replaced with fictio...",
+        "Anonymization-Enhanced Privacy Protection for Mobile GUI Agents: Available but Invisible 1 Introduction 2 Related Work 2.1 GUI Agents and Privacy Challenges 2.2 PII Detection and Extraction in UIs 2.3 Privacy Protection Techniques in GUI Agents 3 Method 3.1 System overview and design goals Overall p..."
+      ],
+      "response": "After Personally Identifiable Information (PII) is replaced using the category-preserving anonymization method, an additional layer of privacy protection is offered by converting the anonymized text back into synthetic speech using a text-to-speech or voice conversion system [S2].\n\nThis process provides an extra safeguard by generating new audio with a different voice, thereby protecting the speaker's original acoustic characteristics and offering an additional layer of privacy protection beyond just the content PII [S1, S2].",
+      "reference": "The anonymized text can optionally be converted back to synthetic speech using a TTS or voice cloning system, protecting both the speech content PII and the speaker's acoustic characteristics.",
+      "faithfulness": 1.0,
+      "answer_relevancy": 0.7360498899982407,
+      "context_precision": 0.9999999999,
+      "context_recall": 1.0
+    }
+  ]
+}
